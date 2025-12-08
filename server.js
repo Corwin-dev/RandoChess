@@ -30,12 +30,6 @@ wss.on('connection', (ws) => {
                 case 'MOVE':
                     handleMove(ws, data);
                     break;
-                case 'REMATCH':
-                    handleRematch(ws);
-                    break;
-                case 'LEAVE':
-                    handleLeave(ws);
-                    break;
             }
         } catch (error) {
             console.error('Error handling message:', error);
@@ -81,9 +75,13 @@ function createGameSession(player1, player2, pieces) {
     // Randomly assign colors
     const colors = Math.random() < 0.5 ? ['white', 'black'] : ['black', 'white'];
     
+    // Generate placement once on server to ensure both players have identical boards
+    const placement = generatePlacement(pieces);
+    
     const session = {
         sessionId: sessionId,
         pieces: pieces, // Use pieces from first player
+        placement: placement, // Shared placement for both players
         players: [
             { ws: player1, color: colors[0], ready: false },
             { ws: player2, color: colors[1], ready: false }
@@ -96,12 +94,13 @@ function createGameSession(player1, player2, pieces) {
     player1.sessionId = sessionId;
     player2.sessionId = sessionId;
     
-    // Notify both players with the same pieces
+    // Notify both players with the same pieces and placement
     const matchedMessage = {
         type: 'MATCHED',
         color: colors[0],
         sessionId: sessionId,
-        pieces: pieces
+        pieces: pieces,
+        placement: placement
     };
     console.log('Sending to player1, pieces:', matchedMessage.pieces ? `array of ${matchedMessage.pieces.length}` : 'missing');
     player1.send(JSON.stringify(matchedMessage));
@@ -150,53 +149,6 @@ function handleMove(ws, data) {
     }
 }
 
-function handleRematch(ws) {
-    const session = gameSessions.get(ws.sessionId);
-    if (!session) return;
-    
-    const player = session.players.find(p => p.ws === ws);
-    if (!player) return;
-    
-    player.ready = true;
-    
-    // Check if both players are ready
-    if (session.players.every(p => p.ready)) {
-        // Reset game state but keep same pieces and players
-        session.currentTurn = 'white';
-        session.gameActive = true;
-        session.players.forEach(p => p.ready = false);
-        
-        // Notify both players to reset
-        session.players.forEach(p => {
-            p.ws.send(JSON.stringify({
-                type: 'REMATCH_START',
-                pieces: session.pieces,
-                color: p.color
-            }));
-        });
-        
-        console.log(`Rematch started: ${ws.sessionId}`);
-    } else {
-        // Notify other player that this player wants rematch
-        session.players.forEach(p => {
-            if (p.ws !== ws) {
-                p.ws.send(JSON.stringify({
-                    type: 'REMATCH_REQUESTED'
-                }));
-            }
-        });
-        
-        ws.send(JSON.stringify({
-            type: 'WAITING_FOR_REMATCH',
-            message: 'Waiting for opponent to accept rematch...'
-        }));
-    }
-}
-
-function handleLeave(ws) {
-    handleDisconnect(ws, true);
-}
-
 function handleDisconnect(ws, intentional = false) {
     // Remove from waiting queue if present
     const queueIndex = waitingQueue.findIndex(item => item.ws === ws);
@@ -228,6 +180,38 @@ function handleDisconnect(ws, intentional = false) {
     // Clean up session
     gameSessions.delete(ws.sessionId);
     console.log(`Game session closed: ${ws.sessionId}`);
+}
+
+function generatePlacement(pieces) {
+    // Find the strongest non-royal piece (most moves)
+    // pieces[0] = royal, pieces[1-5] = random non-royal, pieces[6] = pawn
+    let strongestIndex = 1;
+    let maxMoves = pieces[1].moves.length;
+    for (let i = 2; i <= 5; i++) {
+        if (pieces[i].moves.length > maxMoves) {
+            maxMoves = pieces[i].moves.length;
+            strongestIndex = i;
+        }
+    }
+    
+    // Get remaining pieces for symmetric placement
+    const remainingPieces = [];
+    for (let i = 1; i <= 5; i++) {
+        if (i !== strongestIndex) {
+            remainingPieces.push(i);
+        }
+    }
+    
+    // Shuffle for random but consistent placement
+    for (let i = remainingPieces.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [remainingPieces[i], remainingPieces[j]] = [remainingPieces[j], remainingPieces[i]];
+    }
+    
+    return {
+        remainingPieces: remainingPieces,
+        strongestIndex: strongestIndex
+    };
 }
 
 function generateSessionId() {

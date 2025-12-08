@@ -324,7 +324,17 @@ class GameBoard {
         this.pieces = pieces || PieceGenerator.generateRandomPieces();
         this.gameOver = false;
         this.moveHistory = [];
-        this.playerColor = null; // Set by multiplayer client
+        this.playerColor = null; // Set by multiplayer client or AI game
+        this.isAIGame = false; // Whether this is an AI game
+        this.aiPlayer = null; // ChessAI instance
+        this.aiColor = null; // Which color the AI plays
+        
+        // Chess clock properties
+        this.clockEnabled = false;
+        this.whiteTime = 300000; // 5 minutes in milliseconds
+        this.blackTime = 300000;
+        this.clockInterval = null;
+        this.lastTickTime = null;
         
         this.initializeBoard();
         this.render();
@@ -332,6 +342,9 @@ class GameBoard {
     }
 
     initializeBoard() {
+        // Clear the entire board first
+        this.board = Array(8).fill(null).map(() => Array(8).fill(null));
+        
         // Back rank setup: symmetric pairs + king and strong piece in middle
         // pieces[0] = royal, pieces[1-5] = random non-royal, pieces[6] = pawn
         
@@ -353,10 +366,10 @@ class GameBoard {
             }
         }
         
-        // Use fixed placement (don't shuffle) - piece positions stay consistent across games
-        // Store placement in session if it doesn't exist
+        // Use placement from server (multiplayer) or generate locally (single player)
+        // In multiplayer, sessionPlacement comes from server to ensure both players match
         if (!window.sessionPlacement) {
-            // Shuffle only on first game
+            // Generate placement locally (for single player or first initialization)
             for (let i = remainingPieces.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [remainingPieces[i], remainingPieces[j]] = [remainingPieces[j], remainingPieces[i]];
@@ -367,7 +380,7 @@ class GameBoard {
                 strongestIndex: strongestIndex
             };
         } else {
-            // Reuse placement from session
+            // Use placement from session (comes from server in multiplayer)
             remainingPieces.length = 0;
             remainingPieces.push(...window.sessionPlacement.remainingPieces);
             strongestIndex = window.sessionPlacement.strongestIndex;
@@ -545,16 +558,19 @@ class GameBoard {
     }
 
     handleSquareClick(row, col) {
-        // Only allow moves if it's your turn
-        if (this.playerColor && this.currentTurn !== this.playerColor) return;
+        // In multiplayer mode, only allow moves if it's your turn
+        // In AI mode, only allow moves if it's the player's turn (not AI's turn)
+        if (this.playerColor) {
+            if (this.currentTurn !== this.playerColor) return;
+        }
         
         // If a valid move is clicked
         const validMove = this.validMoves.find(m => m.row === row && m.col === col);
         if (validMove) {
             this.makeMove(this.selectedSquare.row, this.selectedSquare.col, row, col);
             
-            // Send move to server
-            if (window.multiplayerClient && window.multiplayerClient.isConnected) {
+            // Send move to server only if in multiplayer mode (not AI mode)
+            if (!this.isAIGame && window.multiplayerClient && window.multiplayerClient.isConnected) {
                 window.multiplayerClient.sendMove({
                     fromRow: this.selectedSquare.row,
                     fromCol: this.selectedSquare.col,
@@ -651,7 +667,7 @@ class GameBoard {
         return validMoves;
     }
 
-    makeMove(fromRow, fromCol, toRow, toCol) {
+    makeMove(fromRow, fromCol, toRow, toCol, switchTurn = true) {
         const cellData = this.board[fromRow][fromCol];
         if (!cellData) {
             console.error('No piece at', fromRow, fromCol);
@@ -683,10 +699,23 @@ class GameBoard {
             }
         }
 
-        // Switch turns
-        this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
-        document.getElementById('current-turn').textContent = 
-            this.currentTurn.charAt(0).toUpperCase() + this.currentTurn.slice(1);
+        // Switch turns only if requested (not for remote moves)
+        if (switchTurn) {
+            this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
+            document.getElementById('current-turn').textContent = 
+                this.currentTurn.charAt(0).toUpperCase() + this.currentTurn.slice(1);
+            
+            // Update clock display when turn switches
+            if (this.clockEnabled) {
+                this.lastTickTime = Date.now(); // Reset tick time for new turn
+                this.updateClockDisplay();
+            }
+            
+            // If it's now AI's turn in an AI game, make AI move
+            if (this.isAIGame && this.currentTurn === this.aiColor && !this.gameOver) {
+                this.makeAIMove();
+            }
+        }
     }
 
     showMessage(msg) {
@@ -698,20 +727,170 @@ class GameBoard {
     }
     
     applyRemoteMove(move) {
-        this.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
+        this.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol, false);
+        // Update turn indicator
+        document.getElementById('current-turn').textContent = 
+            this.currentTurn.charAt(0).toUpperCase() + this.currentTurn.slice(1);
+        
+        // Update clock display when opponent moves
+        if (this.clockEnabled) {
+            this.lastTickTime = Date.now();
+            this.updateClockDisplay();
+        }
+        
         this.render();
+    }
+    
+    // Enable AI mode for this game
+    enableAI(playerColor = null, difficulty = 'medium') {
+        this.isAIGame = true;
+        // If no player color specified, randomly assign
+        this.playerColor = playerColor || (Math.random() < 0.5 ? 'white' : 'black');
+        this.aiColor = this.playerColor === 'white' ? 'black' : 'white';
+        this.aiPlayer = new ChessAI(difficulty);
+        
+        console.log(`AI game started. Player: ${this.playerColor}, AI: ${this.aiColor}`);
+        
+        // Clear the initial message
+        const messageEl = document.getElementById('message');
+        if (messageEl) {
+            messageEl.textContent = '';
+        }
+        
+        // If AI plays first (player is black), make AI move
+        if (this.currentTurn === this.aiColor) {
+            this.makeAIMove();
+        }
+    }
+    
+    // Make AI move after a delay
+    makeAIMove() {
+        if (this.gameOver || !this.isAIGame) return;
+        
+        setTimeout(() => {
+            const bestMove = this.aiPlayer.getBestMove(this);
+            if (bestMove) {
+                this.makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol, true);
+                this.render(); // Redraw board after AI move
+            }
+        }, 500); // Small delay to make it feel natural
+    }
+    
+    // Enable chess clock for multiplayer
+    startClock() {
+        this.clockEnabled = true;
+        this.lastTickTime = Date.now();
+        
+        // Show clock displays
+        document.getElementById('white-clock').style.display = 'flex';
+        document.getElementById('black-clock').style.display = 'flex';
+        
+        this.updateClockDisplay();
+        
+        // Start the interval
+        this.clockInterval = setInterval(() => {
+            const now = Date.now();
+            const elapsed = now - this.lastTickTime;
+            this.lastTickTime = now;
+            
+            // Subtract time from current player's clock
+            if (this.currentTurn === 'white') {
+                this.whiteTime = Math.max(0, this.whiteTime - elapsed);
+                if (this.whiteTime === 0) {
+                    this.handleTimeout('white');
+                }
+            } else {
+                this.blackTime = Math.max(0, this.blackTime - elapsed);
+                if (this.blackTime === 0) {
+                    this.handleTimeout('black');
+                }
+            }
+            
+            this.updateClockDisplay();
+        }, 100); // Update every 100ms for smooth countdown
+    }
+    
+    stopClock() {
+        if (this.clockInterval) {
+            clearInterval(this.clockInterval);
+            this.clockInterval = null;
+        }
+    }
+    
+    updateClockDisplay() {
+        const whiteClock = document.getElementById('white-clock');
+        const blackClock = document.getElementById('black-clock');
+        
+        if (!whiteClock || !blackClock) return;
+        
+        // Format time as M:SS
+        const formatTime = (ms) => {
+            const totalSeconds = Math.ceil(ms / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        };
+        
+        whiteClock.querySelector('.clock-time').textContent = formatTime(this.whiteTime);
+        blackClock.querySelector('.clock-time').textContent = formatTime(this.blackTime);
+        
+        // Highlight active player's clock
+        whiteClock.classList.toggle('active', this.currentTurn === 'white' && !this.gameOver);
+        blackClock.classList.toggle('active', this.currentTurn === 'black' && !this.gameOver);
+        
+        // Warning when under 30 seconds
+        whiteClock.classList.toggle('warning', this.whiteTime < 30000 && this.whiteTime > 0);
+        blackClock.classList.toggle('warning', this.blackTime < 30000 && this.blackTime > 0);
+    }
+    
+    handleTimeout(color) {
+        this.stopClock();
+        this.gameOver = true;
+        const winner = color === 'white' ? 'Black' : 'White';
+        this.showMessage(`${winner} wins on time!`);
+        
+        // Notify server if in multiplayer
+        if (!this.isAIGame && window.multiplayerClient && window.multiplayerClient.isConnected) {
+            window.multiplayerClient.sendMove({
+                fromRow: -1,
+                fromCol: -1,
+                toRow: -1,
+                toCol: -1
+            }, true, winner);
+        }
     }
 
 }
 
 // Initialize game when page loads
 window.addEventListener('DOMContentLoaded', () => {
+    // Generate pieces for initial AI game
     window.sessionPieces = PieceGenerator.generateRandomPieces();
     console.log('Initial pieces generated:', window.sessionPieces.map(p => p.name));
-    window.sessionPlacement = null; // Will be set when matched
+    window.sessionPlacement = null;
     
-    // Auto-connect to multiplayer (game board created after match)
-    if (window.multiplayerClient) {
-        window.multiplayerClient.connect();
+    // Start AI game immediately
+    window.game = new GameBoard(window.sessionPieces);
+    window.game.enableAI(null, 'hard'); // Randomly assign player color and start AI
+    
+    // Set up Search for Opponent button
+    const searchBtn = document.getElementById('search-opponent-btn');
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            searchBtn.disabled = true;
+            searchBtn.textContent = 'Searching...';
+            
+            // Show waiting message
+            const messageEl = document.getElementById('message');
+            if (messageEl) {
+                messageEl.textContent = 'Waiting for opponent...';
+            }
+            
+            // Connect to multiplayer and join queue
+            if (!window.multiplayerClient) {
+                window.multiplayerClient = new MultiplayerClient();
+            }
+            window.multiplayerClient.connect();
+        });
     }
 });

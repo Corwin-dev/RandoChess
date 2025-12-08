@@ -60,17 +60,22 @@ class MultiplayerClient {
                     console.log('Pieces before deserialize:', window.sessionPieces.map(p => p.name));
                     window.sessionPieces = deserializePieces(data.pieces);
                     console.log('Pieces after deserialize:', window.sessionPieces.map(p => p.name));
-                    window.sessionPlacement = null; // Reset placement
+                    // Use placement from server to ensure both players have identical boards
+                    window.sessionPlacement = data.placement;
                 } else {
                     console.error('No pieces received in MATCHED message');
                     return;
                 }
                 
-                // Create game board now that we're matched
-                if (!window.game) {
-                    window.game = new GameBoard(window.sessionPieces);
-                } else {
+                // Transition from AI game to multiplayer game
+                // Disable AI mode and reset for multiplayer
+                if (window.game) {
+                    window.game.isAIGame = false;
+                    window.game.aiPlayer = null;
+                    window.game.aiColor = null;
                     window.game.pieces = window.sessionPieces;
+                } else {
+                    window.game = new GameBoard(window.sessionPieces);
                 }
                 
                 // Set player color on game board
@@ -80,9 +85,12 @@ class MultiplayerClient {
                 window.game.initializeBoard();
                 window.game.render();
                 
+                // Start the chess clock
+                window.game.startClock();
+                
                 this.gameBoard = window.game;
                 this.hideWaitingMessage();
-                this.showGameControls();
+                this.hideSearchButton();
                 break;
                 
             case 'MOVE':
@@ -94,34 +102,7 @@ class MultiplayerClient {
                     if (data.gameOver) {
                         this.gameBoard.gameOver = true;
                         this.gameBoard.showMessage(`${data.winner} wins!`);
-                        this.showRematchButton();
                     }
-                }
-                break;
-                
-            case 'REMATCH_REQUESTED':
-                this.showMessage('Opponent wants a rematch');
-                break;
-                
-            case 'WAITING_FOR_REMATCH':
-                this.showMessage(data.message);
-                break;
-                
-            case 'REMATCH_START':
-                this.showMessage('Rematch starting!');
-                this.hideRematchButton();
-                
-                if (this.gameBoard) {
-                    // Reset sessionPlacement to null so it gets recalculated with same pieces
-                    window.sessionPlacement = null;
-                    
-                    // Reset game state
-                    this.gameBoard.gameOver = false;
-                    this.gameBoard.currentTurn = 'white';
-                    this.gameBoard.selectedSquare = null;
-                    this.gameBoard.validMoves = [];
-                    this.gameBoard.initializeBoard();
-                    this.gameBoard.render();
                 }
                 break;
                 
@@ -131,7 +112,6 @@ class MultiplayerClient {
                 } else {
                     this.showMessage('Opponent disconnected. Finding new opponent...');
                 }
-                this.hideRematchButton();
                 this.sessionId = null;
                 break;
                 
@@ -152,25 +132,6 @@ class MultiplayerClient {
         }));
     }
     
-    requestRematch() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        
-        this.ws.send(JSON.stringify({
-            type: 'REMATCH'
-        }));
-    }
-    
-    leaveGame() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        
-        this.ws.send(JSON.stringify({
-            type: 'LEAVE'
-        }));
-        
-        this.sessionId = null;
-        this.showMessage('Finding new opponent...');
-    }
-    
     showMessage(message) {
         const messageEl = document.getElementById('message');
         if (messageEl) {
@@ -182,48 +143,10 @@ class MultiplayerClient {
         // Remove any waiting UI elements
     }
     
-    showGameControls() {
-        const controls = document.getElementById('game-controls');
-        if (controls) {
-            controls.style.display = 'flex';
-        }
-    }
-    
-    showRematchButton() {
-        let rematchBtn = document.getElementById('rematch-btn');
-        if (!rematchBtn) {
-            rematchBtn = document.createElement('button');
-            rematchBtn.id = 'rematch-btn';
-            rematchBtn.textContent = 'Rematch';
-            rematchBtn.onclick = () => this.requestRematch();
-            
-            const gameInfo = document.querySelector('.game-info');
-            gameInfo.appendChild(rematchBtn);
-        }
-        rematchBtn.style.display = 'block';
-        
-        // Also show leave button
-        let leaveBtn = document.getElementById('leave-btn');
-        if (!leaveBtn) {
-            leaveBtn = document.createElement('button');
-            leaveBtn.id = 'leave-btn';
-            leaveBtn.textContent = 'Find New Opponent';
-            leaveBtn.onclick = () => this.leaveGame();
-            
-            const gameInfo = document.querySelector('.game-info');
-            gameInfo.appendChild(leaveBtn);
-        }
-        leaveBtn.style.display = 'block';
-    }
-    
-    hideRematchButton() {
-        const rematchBtn = document.getElementById('rematch-btn');
-        if (rematchBtn) {
-            rematchBtn.style.display = 'none';
-        }
-        const leaveBtn = document.getElementById('leave-btn');
-        if (leaveBtn) {
-            leaveBtn.style.display = 'none';
+    hideSearchButton() {
+        const searchBtn = document.getElementById('search-opponent-btn');
+        if (searchBtn) {
+            searchBtn.style.display = 'none';
         }
     }
 }

@@ -9,6 +9,7 @@ body {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     padding: 20px;
@@ -36,6 +37,38 @@ h1 {
     margin-bottom: 20px;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+.clock-display {
+    display: none; /* Hidden by default, shown in multiplayer */
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 15px;
+    background: #f5f5f5;
+    border-radius: 8px;
+    min-width: 100px;
+}
+
+.clock-display.active {
+    background: #667eea;
+    color: white;
+}
+
+.clock-display.warning {
+    background: #ff6b6b;
+    color: white;
+}
+
+.clock-label {
+    font-size: 0.8em;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.clock-time {
+    font-size: 1.5em;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
 }
 
 .turn-indicator {
@@ -95,6 +128,34 @@ button:hover {
 .multiplayer-controls {
     display: flex;
     gap: 10px;
+    margin-top: 20px;
+    justify-content: center;
+}
+
+.multiplayer-controls button {
+    padding: 12px 24px;
+    font-size: 1.1em;
+}
+
+.multiplayer-controls button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+footer {
+    text-align: center;
+    padding: 20px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9em;
+}
+
+footer a {
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
 }
 
 #board {

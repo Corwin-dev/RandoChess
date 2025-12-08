@@ -12,6 +12,7 @@ class ChessAI {
             case 'easy': return 2;
             case 'medium': return 3;
             case 'hard': return 4;
+            case 'expert': return 5;
             default: return 3;
         }
     }
