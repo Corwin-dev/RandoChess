@@ -3,8 +3,8 @@
 
 // Base controller for game logic coordination
 class GameController {
-    constructor(pieces, renderer, uiManager) {
-        this.engine = new ChessEngine(pieces);
+    constructor(pieces, renderer, uiManager, seed = null) {
+        this.engine = new ChessEngine(pieces, seed);
         this.renderer = renderer;
         this.uiManager = uiManager;
         this.selectedSquare = null;
@@ -71,8 +71,8 @@ class GameController {
 
 // AI Game Mode Controller
 class AIGameController extends GameController {
-    constructor(pieces, renderer, uiManager, difficulty = 'hard') {
-        super(pieces, renderer, uiManager);
+    constructor(pieces, renderer, uiManager, difficulty = 'hard', seed = null) {
+        super(pieces, renderer, uiManager, seed);
         this.ai = new ChessAI(difficulty);
         this.playerColor = null;
         this.aiColor = null;
@@ -145,8 +145,8 @@ class AIGameController extends GameController {
 
 // Multiplayer Game Mode Controller
 class MultiplayerGameController extends GameController {
-    constructor(pieces, renderer, uiManager, multiplayerClient) {
-        super(pieces, renderer, uiManager);
+    constructor(pieces, renderer, uiManager, multiplayerClient, color, seed = null) {
+        super(pieces, renderer, uiManager, seed);
         this.multiplayerClient = multiplayerClient;
         this.playerColor = null;
     }

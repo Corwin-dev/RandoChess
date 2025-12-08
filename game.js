@@ -63,7 +63,8 @@ class RandoChessApp {
             this.pieces,
             this.renderer,
             this.uiManager,
-            difficulty
+            difficulty,
+            PieceGenerator.lastUsedSeed
         );
         
         this.renderer.attachEventListener((row, col) => {
@@ -100,7 +101,9 @@ class RandoChessApp {
                 this.pieces,
                 this.renderer,
                 this.uiManager,
-                this.multiplayerClient
+                this.multiplayerClient,
+                color,
+                PieceGenerator.lastUsedSeed
             );
             
             this.renderer.attachEventListener((row, col) => {

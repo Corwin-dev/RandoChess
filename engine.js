@@ -71,6 +71,10 @@ class ChessEngine {
 
     // Generate placement configuration
     generatePlacement() {
+        // Create RNG for placement (use seed if available)
+        const rng = this.seed !== null ? new SeededRandom(this.seed + 1000000) : null;
+        const random = rng ? () => rng.next() : Math.random;
+        
         // Find the strongest non-royal piece (most moves)
         // pieces[0] = royal, pieces[1-5] = random non-royal, pieces[6] = pawn
         let strongestIndex = 1;
@@ -90,9 +94,9 @@ class ChessEngine {
             }
         }
         
-        // Shuffle for random placement
+        // Shuffle for random placement using seeded RNG
         for (let i = remainingPieces.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = Math.floor(random() * (i + 1));
             [remainingPieces[i], remainingPieces[j]] = [remainingPieces[j], remainingPieces[i]];
         }
         
