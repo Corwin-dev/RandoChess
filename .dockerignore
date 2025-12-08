@@ -1,6 +1,6 @@
-node_modules
-npm-debug.log
-.git
-.gitignore
-README.md
-.DS_Store
+/.git
+/node_modules
+.dockerignore
+.env
+Dockerfile
+fly.toml
