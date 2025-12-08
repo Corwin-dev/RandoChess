@@ -1,0 +1,194 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.container {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 800px;
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
+    font-size: 2.5em;
+}
+
+.game-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.turn-indicator {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #555;
+}
+
+#current-turn {
+    color: #667eea;
+}
+
+button {
+    padding: 10px 20px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background 0.3s;
+}
+
+button:hover {
+    background: #764ba2;
+}
+
+.ai-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #f0f0f0;
+    border-radius: 5px;
+}
+
+.ai-controls label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.ai-controls input[type="checkbox"] {
+    cursor: pointer;
+}
+
+.ai-controls select {
+    padding: 5px 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: white;
+    cursor: pointer;
+}
+
+.multiplayer-controls {
+    display: flex;
+    gap: 10px;
+}
+
+#board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0;
+    width: 600px;
+    height: 600px;
+    border: 3px solid #333;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    margin: 0 auto;
+}
+
+.square {
+    width: 75px;
+    height: 75px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 2em;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+}
+
+.square.light {
+    background: #f0d9b5;
+}
+
+.square.dark {
+    background: #b58863;
+}
+
+.square.selected {
+    background: #4a90e2 !important;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.square.valid-move {
+    background: #90ee90 !important;
+    box-shadow: inset 0 0 15px rgba(0, 100, 0, 0.3);
+}
+
+.move-dot {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(100, 100, 100, 0.6);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.piece {
+    font-size: 2.5em;
+    user-select: none;
+    pointer-events: none;
+}
+
+.piece.white {
+    color: #ffffff;
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
+.piece.black {
+    color: #000000;
+}
+
+.piece.royal {
+    filter: drop-shadow(0 0 5px gold);
+}
+
+#message {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 1.3em;
+    font-weight: bold;
+    color: #667eea;
+    min-height: 30px;
+}
+
+@media (max-width: 700px) {
+    #board {
+        width: 400px;
+        height: 400px;
+    }
+    
+    .square {
+        width: 50px;
+        height: 50px;
+        font-size: 1.5em;
+    }
+    
+    .piece {
+        font-size: 1.8em;
+    }
+}
