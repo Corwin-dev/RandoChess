@@ -73,7 +73,14 @@ class BoardRenderer {
                 const theoreticalMove = this.theoreticalMoves.get(key);
                 if (theoreticalMove) {
                     const dot = document.createElement('div');
-                    dot.className = 'move-dot';
+                    // Color code based on move type
+                    if (theoreticalMove.canMove && theoreticalMove.canCapture) {
+                        dot.className = 'move-dot move-both';
+                    } else if (theoreticalMove.canCapture) {
+                        dot.className = 'move-dot move-capture-only';
+                    } else if (theoreticalMove.canMove) {
+                        dot.className = 'move-dot move-move-only';
+                    }
                     square.appendChild(dot);
                 }
 

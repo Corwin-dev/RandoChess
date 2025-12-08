@@ -157,7 +157,16 @@ class ChessEngine {
                     if (isBlocked) break;
 
                     if (!hasObstacle || isCapture) {
-                        validMoves.push({ row: newRow, col: newCol });
+                        // Determine move type based on current state and capture rules
+                        let moveType;
+                        if (move.capture === 'allowed') {
+                            moveType = isCapture ? 'both' : 'both'; // Can move or capture
+                        } else if (move.capture === 'prohibited') {
+                            moveType = 'move-only';
+                        } else if (move.capture === 'required') {
+                            moveType = 'capture-only';
+                        }
+                        validMoves.push({ row: newRow, col: newCol, type: moveType });
                     }
 
                     // Stop if we hit a piece (and jumping is not required)

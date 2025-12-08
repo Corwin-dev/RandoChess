@@ -177,6 +177,19 @@ footer a:hover {
     z-index: 5;
 }
 
+/* Color-coded move dots */
+.move-dot.move-both {
+    background: rgba(100, 100, 100, 0.6); /* Grey for both move & capture */
+}
+
+.move-dot.move-capture-only {
+    background: rgba(255, 50, 50, 0.7); /* Red for capture only */
+}
+
+.move-dot.move-move-only {
+    background: rgba(50, 255, 50, 0.7); /* Green for move only */
+}
+
 .piece {
     font-size: 2.5em;
     user-select: none;

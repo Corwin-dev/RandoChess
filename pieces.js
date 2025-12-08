@@ -57,7 +57,7 @@ class PieceGenerator {
         // Generate Royal piece (must have one)
         // 50% chance: 1 move, 50% chance: 2 moves
         const royalMoveCount = Math.random() < 0.5 ? 1 : 2;
-        const royalMoves = this.generateRandomMoves(royalMoveCount);
+        const royalMoves = this.generateRandomMoves(royalMoveCount, true);
         const royalSymbol = this.selectSymbolForPiece(royalMoves, true, false, usedSymbols);
         usedSymbols.add(royalSymbol);
         const royal = new Piece(
@@ -88,24 +88,108 @@ class PieceGenerator {
         }
 
         // Generate pawn-like piece (can promote)
-        // Forward move (prohibited capture) and diagonal capture (required capture)
-        const pawnMoves = [
-            new Move([0, 1], 'None', 1, 'prohibited', false, 'prohibited'),      // Forward move only
-            new Move([1, 1], 'Horizontal', 1, 'prohibited', false, 'required')   // Diagonal capture only
-        ];
-        
-        const promotionPieces = [];
-        const numPromotions = 1 + Math.floor(Math.random() * Math.min(3, pieces.length));
-        for (let i = 0; i < numPromotions; i++) {
-            promotionPieces.push(pieces[Math.floor(Math.random() * pieces.length)]);
+        // Determine number of moves: 50% get 2, 25% get 1, 25% get 3
+        const rand = Math.random();
+        let pawnMoveCount;
+        if (rand < 0.25) {
+            pawnMoveCount = 1;
+        } else if (rand < 0.75) {
+            pawnMoveCount = 2;
+        } else {
+            pawnMoveCount = 3;
         }
+        
+        const pawnMoves = [];
+        let hasMove = false;
+        let hasCapture = false;
+        let hasForwardMove = false;
+        
+        for (let i = 0; i < pawnMoveCount; i++) {
+            // Random step with small values preferred (no 2 for pawns)
+            const stepOptions = [0, 1, 1];
+            let dx, dy;
+            
+            // First move must have forward component (dy > 0)
+            if (i === 0) {
+                dx = stepOptions[Math.floor(Math.random() * stepOptions.length)];
+                dy = stepOptions.filter(v => v > 0)[Math.floor(Math.random() * stepOptions.filter(v => v > 0).length)];
+                hasForwardMove = true;
+            } else {
+                do {
+                    dx = stepOptions[Math.floor(Math.random() * stepOptions.length)];
+                    dy = stepOptions[Math.floor(Math.random() * stepOptions.length)];
+                } while (dx === 0 && dy === 0);
+            }
+            
+            // Always horizontal symmetry for pawns
+            const symmetry = 'Horizontal';
+            
+            // Determine if this is a straight move (slide) or non-straight move (jump)
+            const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
+            const jump = isStraightMove ? 'prohibited' : 'required';
+            
+            // Determine capture type
+            let capture;
+            if (pawnMoveCount === 1) {
+                // Single move must do both
+                capture = 'allowed';
+                hasMove = true;
+                hasCapture = true;
+            } else {
+                // Multiple moves: ensure we have at least one of each type
+                if (i === 0 && !hasMove) {
+                    capture = 'prohibited'; // move-only
+                    hasMove = true;
+                } else if (i === 1 && !hasCapture) {
+                    capture = 'required'; // capture-only
+                    hasCapture = true;
+                } else {
+                    // Random for additional moves
+                    const captureRand = Math.random();
+                    if (captureRand < 0.33) {
+                        capture = 'prohibited';
+                        hasMove = true;
+                    } else if (captureRand < 0.66) {
+                        capture = 'required';
+                        hasCapture = true;
+                    } else {
+                        capture = 'allowed';
+                        hasMove = true;
+                        hasCapture = true;
+                    }
+                }
+            }
+            
+            // Determine distance and requiresUnmoved
+            let distance;
+            let requiresUnmoved = false;
+            if (capture === 'prohibited') {
+                // Move-only can have distance 2-3 (with 3 being rare)
+                const distRand = Math.random();
+                if (distRand < 0.1) {
+                    distance = 3; // 10% chance of distance 3
+                } else {
+                    distance = 2; // 90% chance of distance 2
+                }
+                // Long-distance move-only moves require unmoved piece
+                requiresUnmoved = true;
+            } else {
+                // Capture moves or both always distance 1
+                distance = 1;
+            }
+            
+            pawnMoves.push(new Move([dx, dy], symmetry, distance, jump, requiresUnmoved, capture));
+        }
+        
+        // Promotion pieces: all non-pawn, non-royal pieces
+        const promotionPieces = pieces.filter(p => !p.royal);
         
         const pawnSymbol = this.selectSymbolForPiece(pawnMoves, false, true, usedSymbols);
         usedSymbols.add(pawnSymbol);
         const pawn = new Piece(
             pawnSymbol,
             pawnMoves,
-            false,
+            false, // Royal is always false
             [],
             promotionPieces,
             6 + Math.floor(Math.random() * 2) // promotes on rank 6 or 7
@@ -209,20 +293,21 @@ class PieceGenerator {
         return symbolArray[Math.floor(Math.random() * symbolArray.length)];
     }
 
-    static generateRandomMoves(count) {
+    static generateRandomMoves(count, isRoyal = false) {
         const moves = [];
         
         for (let i = 0; i < count; i++) {
             // Random step (0-3 in each direction, but not both 0)
             // Custom ratio: more weight on smaller values
-            const stepOptions = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3];
+            const stepOptions = [0, 0, 1, 1, 1, 1, 2];
             let dx, dy;
             do {
                 dx = stepOptions[Math.floor(Math.random() * stepOptions.length)];
                 dy = stepOptions[Math.floor(Math.random() * stepOptions.length)];
             } while (dx === 0 && dy === 0);
 
-            const symmetry = this.symmetries[Math.floor(Math.random() * this.symmetries.length)];
+            // Royal pieces always get 8way symmetry
+            const symmetry = isRoyal ? '8way' : this.symmetries[Math.floor(Math.random() * this.symmetries.length)];
             
             const requiresUnmoved = false; // Disabled - no one-time-use moves
 
