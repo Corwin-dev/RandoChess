@@ -11,8 +11,12 @@ class RandoChessApp {
     }
 
     initialize() {
+        // Set up seed controls
+        this.setupSeedControls();
+        
         // Generate initial pieces
         this.pieces = PieceGenerator.generateRandomPieces();
+        this.displayCurrentSeed();
         console.log('Generated pieces:', this.pieces.map(p => p.name));
         
         // Set up UI
@@ -28,6 +32,24 @@ class RandoChessApp {
         
         // Start AI game by default
         this.startAIGame();
+    }
+
+    setupSeedControls() {
+        const newGameBtn = document.getElementById('new-game-btn');
+        newGameBtn.addEventListener('click', () => {
+            const seedInput = document.getElementById('seed-input');
+            const seed = seedInput.value ? parseInt(seedInput.value) : null;
+            this.pieces = PieceGenerator.generateRandomPieces(seed);
+            this.displayCurrentSeed();
+            console.log('Generated new pieces with seed:', PieceGenerator.lastUsedSeed);
+            console.log('Pieces:', this.pieces.map(p => p.name));
+            this.startAIGame();
+        });
+    }
+    
+    displayCurrentSeed() {
+        const seedDisplay = document.getElementById('current-seed');
+        seedDisplay.textContent = `Current: ${PieceGenerator.lastUsedSeed}`;
     }
 
     startAIGame(difficulty = 'hard') {

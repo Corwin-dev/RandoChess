@@ -1,6 +1,21 @@
 // ===== Piece Definitions and Generation =====
 // Pure piece logic with no game state dependencies
 
+// Seeded Random Number Generator (using mulberry32)
+class SeededRandom {
+    constructor(seed) {
+        this.seed = seed;
+    }
+
+    // Generate next random number [0, 1)
+    next() {
+        let t = this.seed += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+}
+
 class Move {
     constructor(step, symmetry, distance, jump, requiresUnmoved, capture = 'allowed') {
         this.step = step; // [dx, dy] - movement vector
@@ -50,13 +65,24 @@ class Piece {
 class PieceGenerator {
     static symmetries = ['Horizontal', '4way', '8way'];
     
-    static generateRandomPieces() {
+    static generateRandomPieces(seed = null) {
+        // If no seed provided, generate one from current timestamp
+        if (seed === null) {
+            seed = Date.now() % 1000000;
+        }
+        
+        // Store seed for retrieval
+        this.lastUsedSeed = seed;
+        
+        // Create seeded random number generator
+        const rng = new SeededRandom(seed);
+        
         const pieces = [];
         const usedSymbols = new Set(); // Track used symbols
 
         // Generate Royal piece (must have one)
         // 50% chance: 1 move, 50% chance: 2 moves
-        const royalMoveCount = Math.random() < 0.5 ? 1 : 2;
+        const royalMoveCount = rng.next() < 0.5 ? 1 : 2;
         const royalMoves = this.generateRandomMoves(royalMoveCount, true);
         const royalSymbol = this.selectSymbolForPiece(royalMoves, true, false, usedSymbols);
         usedSymbols.add(royalSymbol);
@@ -72,9 +98,9 @@ class PieceGenerator {
 
         // Generate 5 random non-royal pieces
         for (let i = 0; i < 5; i++) {
-            const numMoves = 1 + Math.floor(Math.random() + Math.random() + Math.random()); // 1-3 moves
-            const moves = this.generateRandomMoves(numMoves);
-            const symbol = this.selectSymbolForPiece(moves, false, false, usedSymbols);
+            const numMoves = 1 + Math.floor(rng.next() + rng.next() + rng.next()); // 1-3 moves
+            const moves = this.generateRandomMoves(numMoves, false, rng);
+            const symbol = this.selectSymbolForPiece(moves, false, false, usedSymbols, rng);
             usedSymbols.add(symbol);
             const piece = new Piece(
                 symbol,
@@ -89,7 +115,7 @@ class PieceGenerator {
 
         // Generate pawn-like piece (can promote)
         // Determine number of moves: 50% get 2, 25% get 1, 25% get 3
-        const rand = Math.random();
+        const rand = rng.next();
         let pawnMoveCount;
         if (rand < 0.25) {
             pawnMoveCount = 1;
@@ -111,13 +137,13 @@ class PieceGenerator {
             
             // First move must have forward component (dy > 0)
             if (i === 0) {
-                dx = stepOptions[Math.floor(Math.random() * stepOptions.length)];
-                dy = stepOptions.filter(v => v > 0)[Math.floor(Math.random() * stepOptions.filter(v => v > 0).length)];
+                dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
+                dy = stepOptions.filter(v => v > 0)[Math.floor(rng.next() * stepOptions.filter(v => v > 0).length)];
                 hasForwardMove = true;
             } else {
                 do {
-                    dx = stepOptions[Math.floor(Math.random() * stepOptions.length)];
-                    dy = stepOptions[Math.floor(Math.random() * stepOptions.length)];
+                    dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
+                    dy = stepOptions[Math.floor(rng.next() * stepOptions.length)];
                 } while (dx === 0 && dy === 0);
             }
             
@@ -145,7 +171,7 @@ class PieceGenerator {
                     hasCapture = true;
                 } else {
                     // Random for additional moves
-                    const captureRand = Math.random();
+                    const captureRand = rng.next();
                     if (captureRand < 0.33) {
                         capture = 'prohibited';
                         hasMove = true;
@@ -165,7 +191,7 @@ class PieceGenerator {
             let requiresUnmoved = false;
             if (capture === 'prohibited') {
                 // Move-only can have distance 2-3 (with 3 being rare)
-                const distRand = Math.random();
+                const distRand = rng.next();
                 if (distRand < 0.1) {
                     distance = 3; // 10% chance of distance 3
                 } else {
@@ -184,7 +210,7 @@ class PieceGenerator {
         // Promotion pieces: all non-pawn, non-royal pieces
         const promotionPieces = pieces.filter(p => !p.royal);
         
-        const pawnSymbol = this.selectSymbolForPiece(pawnMoves, false, true, usedSymbols);
+        const pawnSymbol = this.selectSymbolForPiece(pawnMoves, false, true, usedSymbols, rng);
         usedSymbols.add(pawnSymbol);
         const pawn = new Piece(
             pawnSymbol,
@@ -192,14 +218,16 @@ class PieceGenerator {
             false, // Royal is always false
             [],
             promotionPieces,
-            6 + Math.floor(Math.random() * 2) // promotes on rank 6 or 7
+            6 + Math.floor(rng.next() * 2) // promotes on rank 6 or 7
         );
         pieces.push(pawn);
 
         return pieces;
     }
 
-    static selectSymbolForPiece(moves, isRoyal, isPawn = false, usedSymbols = new Set()) {
+    static selectSymbolForPiece(moves, isRoyal, isPawn = false, usedSymbols = new Set(), rng = null) {
+        // Fallback to Math.random if no rng provided
+        const random = rng ? () => rng.next() : Math.random;
         // Analyze piece characteristics
         let hasLongRange = false;
         let hasDiagonal = false;
@@ -235,50 +263,50 @@ class PieceGenerator {
         // Symbol selection based on characteristics
         if (isRoyal) {
             const royalSymbols = ['⚜'];
-            return this.getUniqueSymbol(royalSymbols, usedSymbols);
+            return this.getUniqueSymbol(royalSymbols, usedSymbols, random);
         }
         
         if (isPawn) {
             const pawnSymbols = ['▴', '▵', '▲', '△', '⯅', '⯆'];
-            return this.getUniqueSymbol(pawnSymbols, usedSymbols);
+            return this.getUniqueSymbol(pawnSymbols, usedSymbols, random);
         }
         
         if (hasJump || hasComplexMove) {
             const jumpSymbols = ['✪', '◬', '⬟', '⬠', '⯃', '⯄', '⬢', '⬣', '⬡', '⭒', '⭓'];
-            return this.getUniqueSymbol(jumpSymbols, usedSymbols);
+            return this.getUniqueSymbol(jumpSymbols, usedSymbols, random);
         }
         
         if (hasLongRange && hasDiagonal && hasStraight) {
             const queenSymbols = ['✶', '❖', '✸', '✺', '✹', '✷', '✶'];
-            return this.getUniqueSymbol(queenSymbols, usedSymbols);
+            return this.getUniqueSymbol(queenSymbols, usedSymbols, random);
         }
         
         if (hasLongRange && hasStraight) {
             const rookSymbols = ['⊞', '🞧', '🞦', '⯌', '⯎'];
-            return this.getUniqueSymbol(rookSymbols, usedSymbols);
+            return this.getUniqueSymbol(rookSymbols, usedSymbols, random);
         }
         
         if (hasLongRange && hasDiagonal) {
             const bishopSymbols = ['⨯', '🞨', '🞩', '⯍', '⯏', '⟐', '⬖', '⬗'];
-            return this.getUniqueSymbol(bishopSymbols, usedSymbols);
+            return this.getUniqueSymbol(bishopSymbols, usedSymbols, random);
         }
         
         if (isShortRange) {
             const shortSymbols = ['◉', '◓', '⯊', '⯋'];
-            return this.getUniqueSymbol(shortSymbols, usedSymbols);
+            return this.getUniqueSymbol(shortSymbols, usedSymbols, random);
         }
         
         // Default: generic piece symbols
         const genericSymbols = ['★', '☆', '✫', '✬', '✭', '✮', '✯'];
-        return this.getUniqueSymbol(genericSymbols, usedSymbols);
+        return this.getUniqueSymbol(genericSymbols, usedSymbols, random);
     }
 
-    static getUniqueSymbol(symbolArray, usedSymbols) {
+    static getUniqueSymbol(symbolArray, usedSymbols, random = Math.random) {
         // Try to find an unused symbol from the preferred array
         const availableSymbols = symbolArray.filter(s => !usedSymbols.has(s));
         
         if (availableSymbols.length > 0) {
-            return availableSymbols[Math.floor(Math.random() * availableSymbols.length)];
+            return availableSymbols[Math.floor(random() * availableSymbols.length)];
         }
         
         // Fallback: use generic symbols
@@ -286,28 +314,29 @@ class PieceGenerator {
         const availableGeneric = genericSymbols.filter(s => !usedSymbols.has(s));
         
         if (availableGeneric.length > 0) {
-            return availableGeneric[Math.floor(Math.random() * availableGeneric.length)];
+            return availableGeneric[Math.floor(random() * availableGeneric.length)];
         }
         
         // Final fallback
-        return symbolArray[Math.floor(Math.random() * symbolArray.length)];
+        return symbolArray[Math.floor(random() * symbolArray.length)];
     }
 
-    static generateRandomMoves(count, isRoyal = false) {
+    static generateRandomMoves(count, isRoyal = false, rng = null) {
+        const random = rng ? () => rng.next() : Math.random;
         const moves = [];
         
         for (let i = 0; i < count; i++) {
             // Random step (0-3 in each direction, but not both 0)
             // Custom ratio: more weight on smaller values
-            const stepOptions = [0, 0, 1, 1, 1, 1, 2];
+            const stepOptions = [0, 0, 0, 1, 1, 2];
             let dx, dy;
             do {
-                dx = stepOptions[Math.floor(Math.random() * stepOptions.length)];
-                dy = stepOptions[Math.floor(Math.random() * stepOptions.length)];
+                dx = stepOptions[Math.floor(random() * stepOptions.length)];
+                dy = stepOptions[Math.floor(random() * stepOptions.length)];
             } while (dx === 0 && dy === 0);
 
             // Royal pieces always get 8way symmetry
-            const symmetry = isRoyal ? '8way' : this.symmetries[Math.floor(Math.random() * this.symmetries.length)];
+            const symmetry = isRoyal ? '8way' : this.symmetries[Math.floor(random() * this.symmetries.length)];
             
             const requiresUnmoved = false; // Disabled - no one-time-use moves
 
@@ -322,7 +351,7 @@ class PieceGenerator {
                 distance = 1;
             } else {
                 // Slide moves: 50% unlimited, 50% limited
-                distance = Math.random() < 0.5 ? -1 : 1;
+                distance = random() < 0.5 ? -1 : 1;
             }
 
             moves.push(new Move([dx, dy], symmetry, distance, jump, requiresUnmoved));
@@ -333,13 +362,13 @@ class PieceGenerator {
         if (!hasYMovement && moves.length > 0) {
             // Replace first move with one that has y movement
             const stepOptions = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3];
-            const dx = stepOptions[Math.floor(Math.random() * stepOptions.length)];
-            const dy = stepOptions.filter(v => v !== 0)[Math.floor(Math.random() * stepOptions.filter(v => v !== 0).length)];
+            const dx = stepOptions[Math.floor(random() * stepOptions.length)];
+            const dy = stepOptions.filter(v => v !== 0)[Math.floor(random() * stepOptions.filter(v => v !== 0).length)];
             
-            const symmetry = this.symmetries[Math.floor(Math.random() * this.symmetries.length)];
+            const symmetry = this.symmetries[Math.floor(random() * this.symmetries.length)];
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
             const jump = isStraightMove ? 'prohibited' : 'required';
-            const distance = jump === 'required' ? 1 : (Math.random() < 0.5 ? -1 : 1);
+            const distance = jump === 'required' ? 1 : (random() < 0.5 ? -1 : 1);
             
             moves[0] = new Move([dx, dy], symmetry, distance, jump, false);
         }
