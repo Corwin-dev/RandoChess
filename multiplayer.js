@@ -1,14 +1,25 @@
-// WebSocket multiplayer client
+// ===== Multiplayer WebSocket Client =====
+// Handles network communication for multiplayer games
+
 class MultiplayerClient {
     constructor() {
         this.ws = null;
         this.sessionId = null;
         this.playerColor = null;
         this.isConnected = false;
-        this.gameBoard = null;
+        this.pieces = null;
+        this.placement = null;
+        
+        // Callbacks
+        this.onMatchFound = null; // (color, pieces, placement) => void
+        this.onMove = null; // (move) => void
+        this.onOpponentLeft = null; // () => void
+        this.onMessage = null; // (message) => void
     }
     
-    connect() {
+    connect(pieces) {
+        this.pieces = pieces;
+        
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}`;
         
@@ -16,13 +27,13 @@ class MultiplayerClient {
         
         this.ws.onopen = () => {
             console.log('Connected to server');
-            console.log('Sending pieces:', window.sessionPieces);
             this.isConnected = true;
             
             // Send pieces to server and join queue
+            const serializedPieces = PieceSerializer.serialize(pieces);
             this.ws.send(JSON.stringify({
                 type: 'JOIN_QUEUE',
-                pieces: window.sessionPieces // Send as object, will be JSON.stringify'd
+                pieces: serializedPieces
             }));
         };
         
@@ -33,96 +44,74 @@ class MultiplayerClient {
         
         this.ws.onerror = (error) => {
             console.error('WebSocket error:', error);
-            this.showMessage('Connection error - please refresh');
+            if (this.onMessage) {
+                this.onMessage('Connection error - please refresh');
+            }
         };
         
         this.ws.onclose = () => {
             console.log('Disconnected from server');
             this.isConnected = false;
-            this.showMessage('Disconnected - please refresh');
+            if (this.onMessage) {
+                this.onMessage('Disconnected - please refresh');
+            }
         };
     }
     
     handleMessage(data) {
         switch(data.type) {
             case 'WAITING':
-                this.showMessage(data.message);
+                if (this.onMessage) {
+                    this.onMessage(data.message);
+                }
                 break;
                 
             case 'MATCHED':
                 this.sessionId = data.sessionId;
                 this.playerColor = data.color;
-                console.log('MATCHED received:', data);
-                this.showMessage(`Match found! You are ${data.color}`);
+                this.placement = data.placement;
                 
-                // Deserialize pieces from server (ensures both players have same pieces)
-                if (data.pieces) {
-                    console.log('Pieces before deserialize:', window.sessionPieces.map(p => p.name));
-                    window.sessionPieces = deserializePieces(data.pieces);
-                    console.log('Pieces after deserialize:', window.sessionPieces.map(p => p.name));
-                    // Use placement from server to ensure both players have identical boards
-                    window.sessionPlacement = data.placement;
-                } else {
-                    console.error('No pieces received in MATCHED message');
-                    return;
+                console.log('Match found! Color:', data.color);
+                
+                // Deserialize pieces from server
+                const pieces = PieceSerializer.deserialize(data.pieces);
+                
+                if (this.onMatchFound) {
+                    this.onMatchFound(data.color, pieces, data.placement);
                 }
-                
-                // Transition from AI game to multiplayer game
-                // Disable AI mode and reset for multiplayer
-                if (window.game) {
-                    window.game.isAIGame = false;
-                    window.game.aiPlayer = null;
-                    window.game.aiColor = null;
-                    window.game.pieces = window.sessionPieces;
-                } else {
-                    window.game = new GameBoard(window.sessionPieces);
-                }
-                
-                // Set player color on game board
-                window.game.playerColor = data.color;
-                window.game.currentTurn = 'white';
-                window.game.gameOver = false;
-                window.game.initializeBoard();
-                window.game.render();
-                
-                // Start the chess clock
-                window.game.startClock();
-                
-                this.gameBoard = window.game;
-                this.hideWaitingMessage();
-                this.hideSearchButton();
                 break;
                 
             case 'MOVE':
-                if (this.gameBoard && data.move) {
-                    // Apply opponent's move
-                    this.gameBoard.currentTurn = data.currentTurn;
-                    this.gameBoard.applyRemoteMove(data.move);
-                    
-                    if (data.gameOver) {
-                        this.gameBoard.gameOver = true;
-                        this.gameBoard.showMessage(`${data.winner} wins!`);
-                    }
+                if (this.onMove && data.move) {
+                    this.onMove(data.move);
+                }
+                
+                if (data.gameOver && this.onMessage) {
+                    const winner = data.winner || 'Unknown';
+                    this.onMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins!`);
                 }
                 break;
                 
             case 'OPPONENT_LEFT':
-                if (data.intentional) {
-                    this.showMessage('Opponent left the game. Finding new opponent...');
-                } else {
-                    this.showMessage('Opponent disconnected. Finding new opponent...');
+                if (this.onOpponentLeft) {
+                    this.onOpponentLeft();
                 }
-                this.sessionId = null;
+                if (this.onMessage) {
+                    this.onMessage('Opponent left the game');
+                }
                 break;
                 
             case 'ERROR':
-                this.showMessage(`Error: ${data.message}`);
+                console.error('Server error:', data.message);
+                if (this.onMessage) {
+                    this.onMessage(data.message);
+                }
                 break;
         }
     }
     
     sendMove(move, gameOver = false, winner = null) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        if (!this.isConnected || !this.ws) return;
         
         this.ws.send(JSON.stringify({
             type: 'MOVE',
@@ -132,23 +121,10 @@ class MultiplayerClient {
         }));
     }
     
-    showMessage(message) {
-        const messageEl = document.getElementById('message');
-        if (messageEl) {
-            messageEl.textContent = message;
-        }
-    }
-    
-    hideWaitingMessage() {
-        // Remove any waiting UI elements
-    }
-    
-    hideSearchButton() {
-        const searchBtn = document.getElementById('search-opponent-btn');
-        if (searchBtn) {
-            searchBtn.style.display = 'none';
+    disconnect() {
+        if (this.ws) {
+            this.ws.close();
         }
     }
 }
 
-window.multiplayerClient = new MultiplayerClient();

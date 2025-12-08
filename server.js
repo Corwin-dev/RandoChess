@@ -51,7 +51,7 @@ function matchPlayer(ws, pieces = null) {
         console.log('Matching with waiting player. Waiting player pieces:', waitingPlayer.pieces ? `array of ${waitingPlayer.pieces.length}` : 'null/undefined');
         createGameSession(waitingPlayer.ws, ws, waitingPlayer.pieces);
     } else {
-        // Add to queue with their pieces
+        // Add to queue with their pieces (already serialized from client)
         console.log('Adding to queue with pieces:', pieces ? `array of ${pieces.length}` : 'null/undefined');
         waitingQueue.push({ ws: ws, pieces: pieces });
         ws.send(JSON.stringify({
