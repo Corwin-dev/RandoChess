@@ -20,7 +20,16 @@
                 <span id="current-seed"></span>
             </div>
         </div>
-        <div id="board"></div>
+        <div id="board-container">
+            <div id="movement-overlay"></div>
+            <div id="board"></div>
+            <div id="promotion-dialog" class="promotion-dialog hidden">
+                <div class="promotion-content">
+                    <h3>Choose Promotion Piece</h3>
+                    <div id="promotion-choices"></div>
+                </div>
+            </div>
+        </div>
         <div id="message">Starting AI game...</div>
         <div class="multiplayer-controls">
             <button id="search-opponent-btn">Search for Opponent</button>

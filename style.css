@@ -172,13 +172,63 @@ footer a:hover {
     text-decoration: underline;
 }
 
+#board-container {
+    position: relative;
+    width: 600px;
+    height: 600px;
+    margin: 0 auto;
+    overflow: visible;
+}
+
+#movement-overlay {
+    position: absolute;
+    display: none;
+    gap: 0;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.overlay-square {
+    width: 75px;
+    height: 75px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
+
+.overlay-square.light {
+    background: transparent;
+}
+
+.overlay-square.dark {
+    background: transparent;
+}
+
+.overlay-square.on-board {
+    background: transparent;
+}
+
+.overlay-square.selected-overlay {
+    background: transparent;
+}
+
+.overlay-dot {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    background: rgba(255, 100, 100, 0.4);
+}
+
 #board {
+    position: relative;
+    z-index: 2;
     display: grid;
     grid-template-columns: repeat(8, 1fr);
     gap: 0;
     width: 600px;
     height: 600px;
-    border: 3px solid #333;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
     margin: 0 auto;
 }
@@ -264,7 +314,84 @@ footer a:hover {
     min-height: 30px;
 }
 
+/* Promotion Dialog */
+.promotion-dialog {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.promotion-dialog.hidden {
+    display: none;
+}
+
+.promotion-content {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    text-align: center;
+}
+
+.promotion-content h3 {
+    margin-bottom: 20px;
+    color: #333;
+    font-size: 1.5em;
+}
+
+#promotion-choices {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.promotion-choice {
+    width: 80px;
+    height: 80px;
+    border: 3px solid #667eea;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3em;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #f8f9fa;
+}
+
+.promotion-choice:hover {
+    transform: scale(1.1);
+    background: #e9ecef;
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.promotion-choice.white {
+    color: #ffffff;
+    text-shadow: 
+        -1px -1px 0 #000,
+        1px -1px 0 #000,
+        -1px 1px 0 #000,
+        1px 1px 0 #000;
+}
+
+.promotion-choice.black {
+    color: #000000;
+}
+
 @media (max-width: 700px) {
+    #board-container {
+        width: 400px;
+        height: 400px;
+    }
+
     #board {
         width: 400px;
         height: 400px;
@@ -279,4 +406,15 @@ footer a:hover {
     .piece {
         font-size: 1.8em;
     }
+    
+    .overlay-square {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .overlay-dot {
+        width: 100%;
+        height: 100%;
+    }
 }
+

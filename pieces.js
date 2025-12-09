@@ -52,18 +52,126 @@ class Move {
 }
 
 class Piece {
-    constructor(name, moves, royal, specials, promotionPieces, promotionRank) {
+    constructor(name, moves, royal, specials, promotionPieces, promotionRank, promotionType = null) {
         this.name = name;
         this.moves = moves; // [Move]
         this.royal = royal; // bool
         this.specials = specials; // [Special] - for future expansion
         this.promotionPieces = promotionPieces; // [Piece]
         this.promotionRank = promotionRank; // int (0-7)
+        this.promotionType = promotionType; // 'choice' (pawns), 'move-upgrade' (directionally restricted), or null
     }
 }
 
 class PieceGenerator {
     static symmetries = ['Horizontal', '4way', '8way'];
+    
+    // Analyze if a piece has only forward or only vertical movement
+    static isDirectionallyRestricted(moves) {
+        // Get all possible steps from all moves
+        const allSteps = [];
+        for (const move of moves) {
+            // Skip capture-only moves for this analysis
+            if (move.capture === 'required') continue;
+            allSteps.push(...move.getSteps());
+        }
+        
+        if (allSteps.length === 0) return false;
+        
+        // Check if all steps are forward-only (dy > 0 for all, or dy < 0 for all)
+        const allForward = allSteps.every(([dx, dy]) => dy > 0);
+        const allBackward = allSteps.every(([dx, dy]) => dy < 0);
+        const onlyForwardMovement = allForward || allBackward;
+        
+        // Check if all steps are vertical-only (dx === 0)
+        const onlyVertical = allSteps.every(([dx, dy]) => dx === 0);
+        
+        return onlyForwardMovement || onlyVertical;
+    }
+    
+    // Determine the farthest rank a piece can reach
+    static getFarthestReachableRank(moves, startRank = 1) {
+        // Get all possible steps
+        const allSteps = [];
+        for (const move of moves) {
+            if (move.capture === 'required') continue;
+            allSteps.push(...move.getSteps());
+        }
+        
+        if (allSteps.length === 0) return startRank;
+        
+        // Find maximum y movement
+        const maxY = Math.max(...allSteps.map(([dx, dy]) => dy));
+        const minY = Math.min(...allSteps.map(([dx, dy]) => dy));
+        
+        // If can only move forward, farthest is rank 7; if only backward, rank 0
+        if (maxY > 0 && minY >= 0) return 7; // Can move forward
+        if (maxY <= 0 && minY < 0) return 0; // Can only move backward
+        
+        return 7; // Can move both ways
+    }
+    
+    // Generate additional moves for move-upgrade promotion
+    static generateUpgradeMoves(originalMoves, rng) {
+        const newMoves = [...originalMoves];
+        let attemptsLeft = 10;
+        
+        // Keep adding moves until piece is no longer directionally restricted
+        while (this.isDirectionallyRestricted(newMoves) && attemptsLeft > 0) {
+            attemptsLeft--;
+            
+            // Generate a move that breaks the restriction
+            const allSteps = [];
+            for (const move of newMoves) {
+                if (move.capture === 'required') continue;
+                allSteps.push(...move.getSteps());
+            }
+            
+            const onlyVertical = allSteps.every(([dx, dy]) => dx === 0);
+            const allForward = allSteps.every(([dx, dy]) => dy > 0);
+            const allBackward = allSteps.every(([dx, dy]) => dy < 0);
+            
+            let dx, dy;
+            
+            if (onlyVertical) {
+                // Add horizontal or diagonal movement
+                dx = [1, 1, 2][Math.floor(rng.next() * 3)];
+                dy = [0, 1, 1][Math.floor(rng.next() * 3)];
+            } else if (allForward) {
+                // Add backward movement
+                dx = [0, 1, 1][Math.floor(rng.next() * 3)];
+                dy = -([1, 1, 2][Math.floor(rng.next() * 3)]);
+            } else if (allBackward) {
+                // Add forward movement
+                dx = [0, 1, 1][Math.floor(rng.next() * 3)];
+                dy = [1, 1, 2][Math.floor(rng.next() * 3)];
+            }
+            
+            const symmetry = this.symmetries[Math.floor(rng.next() * this.symmetries.length)];
+            const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
+            const jump = isStraightMove ? 'prohibited' : 'required';
+            const distance = jump === 'required' ? 1 : (rng.next() < 0.5 ? -1 : 1);
+            
+            newMoves.push(new Move([dx, dy], symmetry, distance, jump, false));
+        }
+        
+        // Add one bonus move for the upgrade
+        const stepOptions = [0, 0, 1, 1, 2];
+        let dx, dy;
+        do {
+            dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
+            dy = stepOptions[Math.floor(rng.next() * stepOptions.length)];
+        } while (dx === 0 && dy === 0);
+        
+        const symmetry = this.symmetries[Math.floor(rng.next() * this.symmetries.length)];
+        const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
+        const jump = isStraightMove ? 'prohibited' : 'required';
+        const distance = jump === 'required' ? 1 : (rng.next() < 0.5 ? -1 : 1);
+        
+        newMoves.push(new Move([dx, dy], symmetry, distance, jump, false));
+        
+        return newMoves;
+    }
     
     static generateRandomPieces(seed = null) {
         // If no seed provided, generate one from current timestamp
@@ -92,7 +200,8 @@ class PieceGenerator {
             true,
             [],
             [],
-            -1
+            -1,
+            null
         );
         pieces.push(royal);
 
@@ -102,13 +211,24 @@ class PieceGenerator {
             const moves = this.generateRandomMoves(numMoves, false, rng);
             const symbol = this.selectSymbolForPiece(moves, false, false, usedSymbols, rng);
             usedSymbols.add(symbol);
+            
+            // Check if piece needs move-upgrade promotion
+            let promotionRank = -1;
+            let promotionType = null;
+            
+            if (this.isDirectionallyRestricted(moves)) {
+                promotionRank = this.getFarthestReachableRank(moves);
+                promotionType = 'move-upgrade';
+            }
+            
             const piece = new Piece(
                 symbol,
                 moves,
                 false,
                 [],
                 [],
-                -1
+                promotionRank,
+                promotionType
             );
             pieces.push(piece);
         }
@@ -194,11 +314,13 @@ class PieceGenerator {
                 const distRand = rng.next();
                 if (distRand < 0.1) {
                     distance = 3; // 10% chance of distance 3
+                    requiresUnmoved = true; // Only distance 3 requires unmoved
+                } else if (distRand < 0.55) {
+                    distance = 2; // 45% chance of distance 2
+                    requiresUnmoved = true; // Only distance 2 requires unmoved
                 } else {
-                    distance = 2; // 90% chance of distance 2
+                    distance = 1; // 45% chance of distance 1 (always available)
                 }
-                // Long-distance move-only moves require unmoved piece
-                requiresUnmoved = true;
             } else {
                 // Capture moves or both always distance 1
                 distance = 1;
@@ -218,7 +340,8 @@ class PieceGenerator {
             false, // Royal is always false
             [],
             promotionPieces,
-            6 + Math.floor(rng.next() * 2) // promotes on rank 6 or 7
+            6 + Math.floor(rng.next() * 2), // promotes on rank 6 or 7
+            'choice' // Pawns get player choice promotion
         );
         pieces.push(pawn);
 
@@ -394,7 +517,8 @@ class PieceSerializer {
             royal: piece.royal,
             specials: piece.specials,
             promotionPieces: piece.promotionPieces.map((_, idx) => idx), // Store indices instead of references
-            promotionRank: piece.promotionRank
+            promotionRank: piece.promotionRank,
+            promotionType: piece.promotionType
         }));
     }
 
@@ -425,7 +549,8 @@ class PieceSerializer {
                 pieceData.royal,
                 pieceData.specials,
                 [], // Temporary empty array
-                pieceData.promotionRank
+                pieceData.promotionRank,
+                pieceData.promotionType
             );
         });
         

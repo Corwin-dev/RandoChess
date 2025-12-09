@@ -54,7 +54,8 @@ class GameController {
         this.selectedSquare = { row, col };
         const validMoves = this.engine.getValidMoves(row, col);
         const theoreticalMoves = this.engine.getTheoreticalMoves(row, col);
-        this.renderer.setSelection(this.selectedSquare, validMoves, theoreticalMoves);
+        const unrestrictedPattern = this.engine.getUnrestrictedPattern(row, col);
+        this.renderer.setSelection(this.selectedSquare, validMoves, theoreticalMoves, unrestrictedPattern);
         this.render();
     }
 
@@ -108,11 +109,39 @@ class AIGameController extends GameController {
         if (!success) return;
         
         this.clearSelection();
+        
+        // Check for pending promotion (player's choice)
+        if (this.engine.pendingPromotion) {
+            const { color, promotionPieces } = this.engine.pendingPromotion;
+            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
+                this.engine.completePromotion(pieceIndex);
+                this.render();
+                this.uiManager.updateTurn(this.engine.currentTurn);
+                this.checkGameState();
+                
+                // Make AI move if it's AI's turn after promotion
+                if (this.engine.currentTurn === this.aiColor) {
+                    this.makeAIMove();
+                }
+            });
+            this.render();
+            return;
+        }
+        
         this.uiManager.updateTurn(this.engine.currentTurn);
+        
+        // Show check status
+        if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('Check!', 2000);
+        }
         
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
-            this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins!`, 0);
+            if (winner === 'draw') {
+                this.uiManager.showMessage('Stalemate - Draw!', 0);
+            } else {
+                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+            }
             this.isActive = false;
             return;
         }
@@ -122,20 +151,49 @@ class AIGameController extends GameController {
             this.makeAIMove();
         }
     }
+    
+    checkGameState() {
+        if (this.engine.isGameOver()) {
+            const winner = this.engine.getWinner();
+            if (winner === 'draw') {
+                this.uiManager.showMessage('Stalemate - Draw!', 0);
+            } else {
+                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+            }
+            this.isActive = false;
+        } else if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('Check!', 2000);
+        }
+    }
 
-    makeAIMove() {
+    async makeAIMove() {
         if (this.engine.isGameOver() || !this.isActive) return;
         
-        setTimeout(() => {
-            const bestMove = this.ai.getBestMove(this.engine);
+        setTimeout(async () => {
+            const bestMove = await this.ai.getBestMove(this.engine);
             if (bestMove) {
                 this.engine.makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol);
+                
+                // Handle AI promotion - always choose first piece (strongest)
+                if (this.engine.pendingPromotion) {
+                    this.engine.completePromotion(0);
+                }
+                
                 this.render();
                 this.uiManager.updateTurn(this.engine.currentTurn);
                 
+                // Show check status
+                if (this.engine.isInCheck(this.engine.currentTurn)) {
+                    this.uiManager.showMessage('Check!', 2000);
+                }
+                
                 if (this.engine.isGameOver()) {
                     const winner = this.engine.getWinner();
-                    this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins!`, 0);
+                    if (winner === 'draw') {
+                        this.uiManager.showMessage('Stalemate - Draw!', 0);
+                    } else {
+                        this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+                    }
                     this.isActive = false;
                 }
             }
@@ -171,6 +229,30 @@ class MultiplayerGameController extends GameController {
         if (!success) return;
         
         this.clearSelection();
+        
+        // Check for pending promotion (player's choice)
+        if (this.engine.pendingPromotion) {
+            const { color, promotionPieces } = this.engine.pendingPromotion;
+            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
+                this.engine.completePromotion(pieceIndex);
+                this.render();
+                this.uiManager.updateTurn(this.engine.currentTurn);
+                
+                // Send promotion info to server (as a separate message if needed)
+                this.multiplayerClient.sendMove({
+                    fromRow: fromRow,
+                    fromCol: fromCol,
+                    toRow: toRow,
+                    toCol: toCol,
+                    promotion: pieceIndex
+                }, this.engine.isGameOver(), this.engine.getWinner());
+                
+                this.checkGameState();
+            });
+            this.render();
+            return;
+        }
+        
         this.uiManager.updateTurn(this.engine.currentTurn);
         
         // Send move to server
@@ -181,22 +263,61 @@ class MultiplayerGameController extends GameController {
             toCol: toCol
         }, this.engine.isGameOver(), this.engine.getWinner());
         
+        // Show check status
+        if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('Check!', 2000);
+        }
+        
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
-            this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins!`, 0);
+            if (winner === 'draw') {
+                this.uiManager.showMessage('Stalemate - Draw!', 0);
+            } else {
+                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+            }
             this.isActive = false;
+            return;
+        }
+    }
+    
+    checkGameState() {
+        if (this.engine.isGameOver()) {
+            const winner = this.engine.getWinner();
+            if (winner === 'draw') {
+                this.uiManager.showMessage('Stalemate - Draw!', 0);
+            } else {
+                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+            }
+            this.isActive = false;
+        } else if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('Check!', 2000);
         }
     }
 
     // Apply move from opponent
     applyRemoteMove(move) {
         this.engine.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
+        
+        // Handle opponent's promotion choice
+        if (this.engine.pendingPromotion && move.promotion !== undefined) {
+            this.engine.completePromotion(move.promotion);
+        }
+        
         this.render();
         this.uiManager.updateTurn(this.engine.currentTurn);
         
+        // Show check status
+        if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('Check!', 2000);
+        }
+        
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
-            this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins!`, 0);
+            if (winner === 'draw') {
+                this.uiManager.showMessage('Stalemate - Draw!', 0);
+            } else {
+                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+            }
             this.isActive = false;
         }
     }

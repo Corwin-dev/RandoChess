@@ -10,16 +10,27 @@ class ChessAI {
 
     getSearchDepth(difficulty) {
         switch(difficulty) {
-            case 'easy': return 2;
-            case 'medium': return 3;
-            case 'hard': return 4;
-            case 'expert': return 5;
-            default: return 3;
+            case 'easy': return 1;
+            case 'medium': return 2;
+            case 'hard': return 3;
+            case 'expert': return 4;
+            default: return 2;
         }
     }
 
     // Main AI move selection - takes a ChessEngine instance
-    getBestMove(engine) {
+    async getBestMove(engine) {
+        // ============================================================
+        // DEBUG: RANDOM MOVES - REMOVE THIS BEFORE PRODUCTION
+        // ============================================================
+        const allMoves = engine.getAllMoves(engine.currentTurn);
+        if (allMoves.length === 0) return null;
+        return allMoves[Math.floor(Math.random() * allMoves.length)];
+        // ============================================================
+        // END DEBUG - RESTORE ORIGINAL AI LOGIC BELOW
+        // ============================================================
+        
+        /* ORIGINAL AI LOGIC - COMMENTED OUT FOR DEBUG
         this.positionEvaluations = 0;
         const startTime = Date.now();
         
@@ -42,7 +53,14 @@ class ChessAI {
         // Shuffle moves for variety at same evaluation
         this.shuffleArray(allMoves);
 
-        for (const move of allMoves) {
+        for (let i = 0; i < allMoves.length; i++) {
+            const move = allMoves[i];
+            
+            // Yield to browser every few moves to prevent freezing
+            if (i > 0 && i % 3 === 0) {
+                await this.yield();
+            }
+            
             // Make move on a copy of the engine
             const engineCopy = engine.clone();
             engineCopy.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
@@ -63,16 +81,17 @@ class ChessAI {
         console.log(`Best move score: ${bestScore}`);
         
         return bestMove;
+        */
+    }
+
+    // Helper to yield control back to browser
+    yield() {
+        return new Promise(resolve => setTimeout(resolve, 0));
     }
 
     // Minimax algorithm with alpha-beta pruning - takes ChessEngine instance
     minimax(engine, depth, alpha, beta, isMaximizing) {
         this.positionEvaluations++;
-
-        // Check for game over
-        if (engine.isGameOver()) {
-            return isMaximizing ? -100000 : 100000; // Lost the game
-        }
 
         // Reached depth limit
         if (depth === 0) {
@@ -81,10 +100,18 @@ class ChessAI {
 
         const moves = engine.getAllMoves(engine.currentTurn);
 
-        // No legal moves (stalemate or checkmate)
+        // No legal moves - checkmate or stalemate
         if (moves.length === 0) {
-            return 0; // Draw
+            if (engine.isInCheck(engine.currentTurn)) {
+                // Checkmate - losing position
+                return isMaximizing ? -100000 : 100000;
+            }
+            // Stalemate - draw
+            return 0;
         }
+
+        // Order moves for better pruning - captures and center moves first
+        this.orderMoves(moves, engine);
 
         if (isMaximizing) {
             let maxScore = -Infinity;
@@ -111,10 +138,34 @@ class ChessAI {
         }
     }
 
+    // Order moves to improve alpha-beta pruning effectiveness
+    orderMoves(moves, engine) {
+        moves.sort((a, b) => {
+            let scoreA = 0;
+            let scoreB = 0;
+
+            // Prioritize captures
+            const targetA = engine.board[a.toRow][a.toCol];
+            const targetB = engine.board[b.toRow][b.toCol];
+            if (targetA) scoreA += 10;
+            if (targetB) scoreB += 10;
+
+            // Prioritize center moves
+            const centerDistA = Math.abs(3.5 - a.toRow) + Math.abs(3.5 - a.toCol);
+            const centerDistB = Math.abs(3.5 - b.toRow) + Math.abs(3.5 - b.toCol);
+            scoreA += (7 - centerDistA);
+            scoreB += (7 - centerDistB);
+
+            return scoreB - scoreA;
+        });
+    }
+
     // Evaluate the current board position - takes ChessEngine instance
     evaluatePosition(engine) {
         const currentPlayer = engine.currentTurn;
         let score = 0;
+        let ourMoveCount = 0;
+        let theirMoveCount = 0;
 
         // Material count and positional evaluation
         for (let row = 0; row < 8; row++) {
@@ -122,18 +173,35 @@ class ChessAI {
                 const square = engine.board[row][col];
                 if (square) {
                     const pieceValue = this.getPieceValue(square.piece, row, col);
-                    score += square.color === currentPlayer ? pieceValue : -pieceValue;
+                    if (square.color === currentPlayer) {
+                        score += pieceValue;
+                        // Approximate move count instead of calling getAllMoves
+                        ourMoveCount += this.estimateMobility(square.piece);
+                    } else {
+                        score -= pieceValue;
+                        theirMoveCount += this.estimateMobility(square.piece);
+                    }
                 }
             }
         }
 
-        // Mobility bonus (number of legal moves)
-        const ourMoves = engine.getAllMoves(currentPlayer).length;
-        const opponentColor = currentPlayer === 'white' ? 'black' : 'white';
-        const theirMoves = engine.getAllMoves(opponentColor).length;
-        score += (ourMoves - theirMoves) * 0.1;
+        // Mobility bonus (estimated instead of exact)
+        score += (ourMoveCount - theirMoveCount) * 0.05;
 
         return score;
+    }
+
+    // Estimate piece mobility without generating all moves
+    estimateMobility(piece) {
+        let mobility = 0;
+        for (const move of piece.moves) {
+            if (move.distance === -1) {
+                mobility += 7; // Long range pieces
+            } else {
+                mobility += move.distance;
+            }
+        }
+        return mobility * 0.1;
     }
 
     // Get piece value based on its characteristics

@@ -2,12 +2,14 @@
 // Pure game logic with no UI or network dependencies
 
 class ChessEngine {
-    constructor(pieces) {
+    constructor(pieces, seed = null) {
         this.pieces = pieces;
         this.board = Array(8).fill(null).map(() => Array(8).fill(null));
         this.currentTurn = 'white';
         this.gameOver = false;
         this.placement = null; // Store placement for deterministic board setup
+        this.pendingPromotion = null; // {row, col, color, promotionPieces} for choice promotions
+        this.seed = seed; // Store seed for move-upgrade generation
     }
 
     // Initialize the board with pieces
@@ -106,8 +108,46 @@ class ChessEngine {
         };
     }
 
-    // Get all valid moves for a piece at a position
-    getValidMoves(row, col) {
+    // Find the king position for a given color
+    findKing(color) {
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const square = this.board[row][col];
+                if (square && square.color === color && square.piece.royal) {
+                    return { row, col };
+                }
+            }
+        }
+        return null; // King was captured
+    }
+
+    // Check if a square is under attack by the opponent
+    isSquareUnderAttack(row, col, byColor) {
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const square = this.board[r][c];
+                if (square && square.color === byColor) {
+                    const moves = this.getPseudoLegalMoves(r, c);
+                    if (moves.some(m => m.row === row && m.col === col)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Check if a color is in check
+    isInCheck(color) {
+        const king = this.findKing(color);
+        if (!king) return false; // No king = already lost
+        
+        const opponent = color === 'white' ? 'black' : 'white';
+        return this.isSquareUnderAttack(king.row, king.col, opponent);
+    }
+
+    // Get pseudo-legal moves (doesn't check if move leaves king in check)
+    getPseudoLegalMoves(row, col) {
         const cellData = this.board[row][col];
         if (!cellData) return [];
 
@@ -185,6 +225,40 @@ class ChessEngine {
         return validMoves;
     }
 
+    // Get all valid moves for a piece at a position (filters out moves that leave king in check)
+    getValidMoves(row, col) {
+        const pseudoLegalMoves = this.getPseudoLegalMoves(row, col);
+        const cellData = this.board[row][col];
+        if (!cellData) return [];
+
+        // Filter out moves that would leave own king in check
+        const legalMoves = [];
+        for (const move of pseudoLegalMoves) {
+            // Simulate the move
+            const originalTarget = this.board[move.row][move.col];
+            this.board[move.row][move.col] = {
+                piece: cellData.piece,
+                color: cellData.color,
+                hasMoved: true
+            };
+            this.board[row][col] = null;
+
+            // Check if this leaves our king in check
+            const inCheck = this.isInCheck(cellData.color);
+
+            // Undo the move
+            this.board[row][col] = cellData;
+            this.board[move.row][move.col] = originalTarget;
+
+            // Only add move if it doesn't leave king in check
+            if (!inCheck) {
+                legalMoves.push(move);
+            }
+        }
+
+        return legalMoves;
+    }
+
     // Get theoretical moves (ignoring turn) - useful for UI hints
     getTheoreticalMoves(row, col) {
         const cellData = this.board[row][col];
@@ -209,6 +283,54 @@ class ChessEngine {
 
                     if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) break;
 
+                    const key = `${newRow},${newCol}`;
+                    if (!moveSquares.has(key)) {
+                        moveSquares.set(key, { canMove: false, canCapture: false });
+                    }
+
+                    const square = moveSquares.get(key);
+                    if (move.capture === 'allowed') {
+                        square.canMove = true;
+                        square.canCapture = true;
+                    } else if (move.capture === 'prohibited') {
+                        square.canMove = true;
+                    } else if (move.capture === 'required') {
+                        square.canCapture = true;
+                    }
+
+                    // Jump moves only go one distance
+                    if (move.jump === 'required') break;
+                }
+            }
+        }
+
+        return moveSquares;
+    }
+
+    // Get unrestricted movement pattern (ignoring board boundaries) - for visualization
+    getUnrestrictedPattern(row, col) {
+        const cellData = this.board[row][col];
+        if (!cellData) return new Map();
+
+        const piece = cellData.piece;
+        const direction = cellData.color === 'white' ? -1 : 1;
+        const moveSquares = new Map(); // position -> {canMove, canCapture}
+        
+        // Extend the grid by 8 squares in each direction (16x16 total)
+        const gridExtension = 8;
+
+        for (const move of piece.moves) {
+            const steps = move.getSteps();
+
+            for (const [dx, dy] of steps) {
+                const adjustedDy = dy * direction;
+                const maxDist = move.distance === -1 ? gridExtension : move.distance;
+
+                for (let dist = 1; dist <= maxDist; dist++) {
+                    const newRow = row + adjustedDy * dist;
+                    const newCol = col + dx * dist;
+
+                    // No boundary checking - allow extended grid
                     const key = `${newRow},${newCol}`;
                     if (!moveSquares.has(key)) {
                         moveSquares.set(key, { canMove: false, canCapture: false });
@@ -281,11 +403,6 @@ class ChessEngine {
         
         const captured = this.board[toRow][toCol];
 
-        // Check if capturing a royal piece
-        if (captured && captured.piece.royal) {
-            this.gameOver = true;
-        }
-
         // Move the piece
         this.board[toRow][toCol] = {
             piece: cellData.piece,
@@ -296,14 +413,74 @@ class ChessEngine {
 
         // Check for promotion
         if (cellData.piece.promotionRank !== -1 && toRow === cellData.piece.promotionRank) {
-            if (cellData.piece.promotionPieces.length > 0) {
-                // Promote to first available piece
-                this.board[toRow][toCol].piece = cellData.piece.promotionPieces[0];
+            if (cellData.piece.promotionType === 'choice') {
+                // Pawn promotion - player must choose
+                this.pendingPromotion = {
+                    row: toRow,
+                    col: toCol,
+                    color: cellData.color,
+                    promotionPieces: cellData.piece.promotionPieces
+                };
+                // Don't switch turns yet - wait for promotion choice
+                return true;
+            } else if (cellData.piece.promotionType === 'move-upgrade') {
+                // Automatic move upgrade promotion
+                const rng = this.seed !== null ? new SeededRandom(this.seed + toRow * 8 + toCol) : null;
+                const upgradedMoves = PieceGenerator.generateUpgradeMoves(cellData.piece.moves, rng || {next: Math.random});
+                
+                // Create new upgraded piece
+                const upgradedPiece = new Piece(
+                    cellData.piece.name,
+                    upgradedMoves,
+                    cellData.piece.royal,
+                    cellData.piece.specials,
+                    [],
+                    -1,
+                    null
+                );
+                
+                this.board[toRow][toCol].piece = upgradedPiece;
             }
         }
 
         // Switch turns
         this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
+
+        // Check for checkmate or stalemate
+        if (this.getAllMoves(this.currentTurn).length === 0) {
+            this.gameOver = true;
+            // If in check and no moves, it's checkmate
+            // If not in check and no moves, it's stalemate (draw)
+        }
+        
+        return true;
+    }
+    
+    // Complete a pending promotion choice
+    completePromotion(pieceIndex) {
+        if (!this.pendingPromotion) {
+            console.error('No pending promotion');
+            return false;
+        }
+        
+        const { row, col, promotionPieces } = this.pendingPromotion;
+        
+        if (pieceIndex < 0 || pieceIndex >= promotionPieces.length) {
+            console.error('Invalid promotion piece index');
+            return false;
+        }
+        
+        // Promote to chosen piece
+        this.board[row][col].piece = promotionPieces[pieceIndex];
+        this.pendingPromotion = null;
+        
+        // Switch turns
+        this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
+        
+        // Check for checkmate or stalemate
+        if (this.getAllMoves(this.currentTurn).length === 0) {
+            this.gameOver = true;
+        }
         
         return true;
     }
@@ -316,16 +493,36 @@ class ChessEngine {
     // Get the winner (null if game not over)
     getWinner() {
         if (!this.gameOver) return null;
-        // Winner is the player who just moved (captured the royal)
-        return this.currentTurn === 'white' ? 'black' : 'white';
+        
+        // Check if current player (who has no moves) is in check
+        const inCheck = this.isInCheck(this.currentTurn);
+        
+        if (inCheck) {
+            // Checkmate - the other player wins
+            return this.currentTurn === 'white' ? 'black' : 'white';
+        } else {
+            // Stalemate - it's a draw
+            return 'draw';
+        }
+    }
+
+    // Check if current player is in checkmate
+    isCheckmate() {
+        return this.gameOver && this.isInCheck(this.currentTurn);
+    }
+
+    // Check if game is a stalemate (draw)
+    isStalemate() {
+        return this.gameOver && !this.isInCheck(this.currentTurn);
     }
 
     // Clone the engine state (useful for AI lookahead)
     clone() {
-        const clone = new ChessEngine(this.pieces);
+        const clone = new ChessEngine(this.pieces, this.seed);
         clone.currentTurn = this.currentTurn;
         clone.gameOver = this.gameOver;
         clone.placement = this.placement;
+        clone.pendingPromotion = this.pendingPromotion ? {...this.pendingPromotion} : null;
         
         // Deep copy board
         for (let row = 0; row < 8; row++) {
