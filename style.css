@@ -161,6 +161,7 @@ footer {
     padding: 20px;
     color: rgba(255, 255, 255, 0.8);
     font-size: 0.9em;
+    margin-top: auto;
 }
 
 footer a {
@@ -397,14 +398,14 @@ footer a:hover {
 /* When it's black's turn, make the main container background black for strong contrast */
 /* Softer, palette-consistent container backgrounds for turn states */
 body.turn-black .container {
-    background: linear-gradient(180deg, #0f1724 0%, #223252 100%); /* deep blue-gray */
-    color: #e6eef8;
+    background: linear-gradient(0deg, #000000 0%, #ffffff 100%); /* deep blue-gray */
+    color: #8a8a8a;
     box-shadow: 0 20px 60px rgba(10, 20, 30, 0.6);
 }
 
 body.turn-white .container {
-    background: linear-gradient(180deg, #ffffff 0%, #7e93b4 100%); /* soft off-white */
-    color: #111827;
+    background: linear-gradient(0deg, #ffffff 0%, #000000 100%); /* soft off-white */
+    color: #818181;
     box-shadow: 0 20px 60px rgba(100, 120, 180, 0.12);
 }
 
