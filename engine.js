@@ -10,6 +10,7 @@ class ChessEngine {
         this.placement = null; // Store placement for deterministic board setup
         this.pendingPromotion = null; // {row, col, color, promotionPieces} for choice promotions
         this.seed = seed; // Store seed for move-upgrade generation
+        this.lastMove = null; // {fromRow, fromCol, toRow, toCol, piece} for en passant tracking
     }
 
     // Initialize the board with pieces
@@ -18,6 +19,7 @@ class ChessEngine {
         this.board = Array(8).fill(null).map(() => Array(8).fill(null));
         this.currentTurn = 'white';
         this.gameOver = false;
+        this.lastMove = null;
         
         // Generate or use provided placement
         if (placement) {
@@ -163,7 +165,12 @@ class ChessEngine {
             for (const [dx, dy] of steps) {
                 // Adjust dy for piece color (pawns move forward relative to their side)
                 const adjustedDy = dy * direction;
-                const maxDist = move.distance === -1 ? 8 : move.distance;
+                
+                // For pawns: limit distance to 1 if already moved (applies to forward moves with distance > 1)
+                let maxDist = move.distance === -1 ? 8 : move.distance;
+                if (cellData.hasMoved && move.capture === 'prohibited' && dx === 0 && move.distance > 1) {
+                    maxDist = 1; // Pawn can only move 1 square forward after first move
+                }
 
                 for (let dist = 1; dist <= maxDist; dist++) {
                     const newRow = row + adjustedDy * dist;
@@ -222,6 +229,86 @@ class ChessEngine {
             }
         }
 
+        // Check for special moves
+        for (const special of piece.specials) {
+            if (special.type === 'enPassant') {
+                // Check for en passant
+                if (this.lastMove && 
+                    this.lastMove.piece.specials.some(s => s.type === 'enPassant') &&
+                    Math.abs(this.lastMove.toRow - this.lastMove.fromRow) === 2) {
+                    // Enemy pawn just moved two squares
+                    const enemyRow = this.lastMove.toRow;
+                    const enemyCol = this.lastMove.toCol;
+                    
+                    // Check if we're adjacent to the enemy pawn
+                    if (row === enemyRow && Math.abs(col - enemyCol) === 1) {
+                        // En passant is possible
+                        const captureRow = enemyRow + direction;
+                        if (captureRow >= 0 && captureRow <= 7) {
+                            validMoves.push({ 
+                                row: captureRow, 
+                                col: enemyCol, 
+                                type: 'en-passant',
+                                captureRow: enemyRow,
+                                captureCol: enemyCol
+                            });
+                        }
+                    }
+                }
+            } else if (special.type === 'castling' && !cellData.hasMoved) {
+                // Check for castling (kingside and queenside)
+                const kingRow = row;
+                const kingCol = col;
+                
+                // Kingside castling (columns 5, 6, 7)
+                const kingsideRookCol = 7;
+                const kingsideRook = this.board[kingRow][kingsideRookCol];
+                if (kingsideRook && 
+                    kingsideRook.color === cellData.color && 
+                    !kingsideRook.hasMoved &&
+                    !this.board[kingRow][kingCol + 1] &&
+                    !this.board[kingRow][kingCol + 2]) {
+                    // Check that king doesn't move through check
+                    const opponent = cellData.color === 'white' ? 'black' : 'white';
+                    if (!this.isSquareUnderAttack(kingRow, kingCol, opponent) &&
+                        !this.isSquareUnderAttack(kingRow, kingCol + 1, opponent) &&
+                        !this.isSquareUnderAttack(kingRow, kingCol + 2, opponent)) {
+                        validMoves.push({ 
+                            row: kingRow, 
+                            col: kingCol + 2, 
+                            type: 'castling-kingside',
+                            rookFromCol: kingsideRookCol,
+                            rookToCol: kingCol + 1
+                        });
+                    }
+                }
+                
+                // Queenside castling (columns 0, 1, 2, 3, 4)
+                const queensideRookCol = 0;
+                const queensideRook = this.board[kingRow][queensideRookCol];
+                if (queensideRook && 
+                    queensideRook.color === cellData.color && 
+                    !queensideRook.hasMoved &&
+                    !this.board[kingRow][kingCol - 1] &&
+                    !this.board[kingRow][kingCol - 2] &&
+                    !this.board[kingRow][kingCol - 3]) {
+                    // Check that king doesn't move through check
+                    const opponent = cellData.color === 'white' ? 'black' : 'white';
+                    if (!this.isSquareUnderAttack(kingRow, kingCol, opponent) &&
+                        !this.isSquareUnderAttack(kingRow, kingCol - 1, opponent) &&
+                        !this.isSquareUnderAttack(kingRow, kingCol - 2, opponent)) {
+                        validMoves.push({ 
+                            row: kingRow, 
+                            col: kingCol - 2, 
+                            type: 'castling-queenside',
+                            rookFromCol: queensideRookCol,
+                            rookToCol: kingCol - 1
+                        });
+                    }
+                }
+            }
+        }
+
         return validMoves;
     }
 
@@ -236,6 +323,23 @@ class ChessEngine {
         for (const move of pseudoLegalMoves) {
             // Simulate the move
             const originalTarget = this.board[move.row][move.col];
+            const originalRook = null;
+            let rookFromCol = null;
+            
+            // Handle castling - move the rook during simulation
+            if (move.type === 'castling-kingside' || move.type === 'castling-queenside') {
+                rookFromCol = move.rookFromCol;
+                const originalRookCell = this.board[row][rookFromCol];
+                this.board[row][move.rookToCol] = originalRookCell;
+                this.board[row][rookFromCol] = null;
+            }
+            
+            // Handle en passant - remove captured pawn during simulation
+            if (move.type === 'en-passant') {
+                const capturedPawn = this.board[move.captureRow][move.captureCol];
+                this.board[move.captureRow][move.captureCol] = null;
+            }
+            
             this.board[move.row][move.col] = {
                 piece: cellData.piece,
                 color: cellData.color,
@@ -249,6 +353,24 @@ class ChessEngine {
             // Undo the move
             this.board[row][col] = cellData;
             this.board[move.row][move.col] = originalTarget;
+            
+            // Undo castling
+            if (move.type === 'castling-kingside' || move.type === 'castling-queenside') {
+                const originalRookCell = this.board[row][move.rookToCol];
+                this.board[row][rookFromCol] = originalRookCell;
+                this.board[row][move.rookToCol] = null;
+            }
+            
+            // Undo en passant
+            if (move.type === 'en-passant') {
+                const capturedPawnColor = cellData.color === 'white' ? 'black' : 'white';
+                const pawnPiece = this.pieces.find(p => p.specials.some(s => s.type === 'enPassant'));
+                this.board[move.captureRow][move.captureCol] = {
+                    piece: pawnPiece,
+                    color: capturedPawnColor,
+                    hasMoved: true
+                };
+            }
 
             // Only add move if it doesn't leave king in check
             if (!inCheck) {
@@ -275,7 +397,12 @@ class ChessEngine {
 
             for (const [dx, dy] of steps) {
                 const adjustedDy = dy * direction;
-                const maxDist = move.distance === -1 ? 8 : move.distance;
+                
+                // For pawns: limit distance to 1 if already moved
+                let maxDist = move.distance === -1 ? 8 : move.distance;
+                if (cellData.hasMoved && move.capture === 'prohibited' && dx === 0 && move.distance > 1) {
+                    maxDist = 1;
+                }
 
                 for (let dist = 1; dist <= maxDist; dist++) {
                     const newRow = row + adjustedDy * dist;
@@ -326,7 +453,12 @@ class ChessEngine {
 
             for (const [dx, dy] of steps) {
                 const adjustedDy = dy * direction;
-                const maxDist = move.distance === -1 ? gridExtension : move.distance;
+                
+                // For pawns: limit distance to 1 if already moved
+                let maxDist = move.distance === -1 ? gridExtension : move.distance;
+                if (cellData.hasMoved && move.capture === 'prohibited' && dx === 0 && move.distance > 1) {
+                    maxDist = 1;
+                }
 
                 for (let dist = 1; dist <= maxDist; dist++) {
                     const newRow = row + adjustedDy * dist;
@@ -397,13 +529,28 @@ class ChessEngine {
         
         // Verify the move is valid
         const validMoves = this.getValidMoves(fromRow, fromCol);
-        const isValid = validMoves.some(m => m.row === toRow && m.col === toCol);
-        if (!isValid) {
+        const moveData = validMoves.find(m => m.row === toRow && m.col === toCol);
+        if (!moveData) {
             console.error('Invalid move');
             return false;
         }
         
         const captured = this.board[toRow][toCol];
+
+        // Handle special moves
+        if (moveData.type === 'en-passant') {
+            // Remove the captured pawn
+            this.board[moveData.captureRow][moveData.captureCol] = null;
+        } else if (moveData.type === 'castling-kingside' || moveData.type === 'castling-queenside') {
+            // Move the rook
+            const rook = this.board[fromRow][moveData.rookFromCol];
+            this.board[fromRow][moveData.rookToCol] = {
+                piece: rook.piece,
+                color: rook.color,
+                hasMoved: true
+            };
+            this.board[fromRow][moveData.rookFromCol] = null;
+        }
 
         // Move the piece
         this.board[toRow][toCol] = {
@@ -412,9 +559,19 @@ class ChessEngine {
             hasMoved: true
         };
         this.board[fromRow][fromCol] = null;
+        
+        // Track last move for en passant
+        this.lastMove = {
+            fromRow,
+            fromCol,
+            toRow,
+            toCol,
+            piece: cellData.piece
+        };
 
-        // Check for promotion
-        if (cellData.piece.promotionRank !== -1 && toRow === cellData.piece.promotionRank) {
+        // Check for promotion (white promotes on rank 0, black on rank 7)
+        const promotionRank = cellData.color === 'white' ? 0 : 7;
+        if (cellData.piece.promotionRank !== -1 && toRow === promotionRank) {
             if (cellData.piece.promotionType === 'choice') {
                 // Pawn promotion - player must choose
                 this.pendingPromotion = {
@@ -525,6 +682,7 @@ class ChessEngine {
         clone.gameOver = this.gameOver;
         clone.placement = this.placement;
         clone.pendingPromotion = this.pendingPromotion ? {...this.pendingPromotion} : null;
+        clone.lastMove = this.lastMove ? {...this.lastMove} : null;
         
         // Deep copy board
         for (let row = 0; row < 8; row++) {

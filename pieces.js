@@ -16,13 +16,20 @@ class SeededRandom {
     }
 }
 
+class Special {
+    constructor(type, data = {}) {
+        this.type = type; // 'enPassant' | 'castling'
+        this.data = data; // Additional data for the special move
+    }
+}
+
 class Move {
     constructor(step, symmetry, distance, jump, requiresUnmoved, capture = 'allowed') {
         this.step = step; // [dx, dy] - movement vector
         this.symmetry = symmetry; // None|Horizontal|Vertical|4way|8way
         this.distance = distance; // max distance, -1 for unlimited
         this.jump = jump; // prohibited (slide) | required (jump) - automatic based on step
-        this.requiresUnmoved = requiresUnmoved; // always false (feature disabled)
+        this.requiresUnmoved = requiresUnmoved; // for castling and pawn double-move
         this.capture = capture; // allowed (default) | prohibited (pawn forward) | required (pawn diagonal)
     }
 
@@ -226,16 +233,20 @@ class PieceGenerator {
         const usedSymbols = new Set(); // Track used symbols
 
         // Generate Royal piece (must have one)
-        // 50% chance: 2 moves, 50% chance: 3 moves
-        const royalMoveCount = rng.next()^2 < 0.75 ? 3 : 2;
+        // 75% chance: 2 moves, 25% chance: 3 moves
+        const royalMoveCount = Math.pow(rng.next(), 2) < 0.75 ? 2 : 3;
         const royalMoves = this.generateRandomMoves(royalMoveCount, true, rng);
         const royalSymbol = this.selectSymbolForPiece(royalMoves, true, false, usedSymbols);
         usedSymbols.add(royalSymbol);
+        
+        // Add castling special move to king
+        const castlingSpecial = new Special('castling', {});
+        
         const royal = new Piece(
             royalSymbol,
             royalMoves,
             true,
-            [],
+            [castlingSpecial],
             [],
             -1,
             null
@@ -270,122 +281,30 @@ class PieceGenerator {
             pieces.push(piece);
         }
 
-        // Generate pawn-like piece (can promote)
-        // Determine number of moves: 50% get 2, 25% get 1, 25% get 3
-        const rand = rng.next();
-        let pawnMoveCount;
-        if (rand < 0.25) {
-            pawnMoveCount = 1;
-        } else if (rand < 0.75) {
-            pawnMoveCount = 2;
-        } else {
-            pawnMoveCount = 3;
-        }
-        
-        const pawnMoves = [];
-        let hasMove = false;
-        let hasCapture = false;
-        let hasForwardMove = false;
-        
-        for (let i = 0; i < pawnMoveCount; i++) {
-            // Random step with small values preferred (no 2+ for orthogonal moves)
-            const stepOptions = [0, 1, 1];
-            let dx, dy;
-            
-            // First move must have forward component (dy > 0)
-            if (i === 0) {
-                dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
-                dy = stepOptions.filter(v => v > 0)[Math.floor(rng.next() * stepOptions.filter(v => v > 0).length)];
-                hasForwardMove = true;
-            } else {
-                do {
-                    dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
-                    dy = stepOptions[Math.floor(rng.next() * stepOptions.length)];
-                } while (dx === 0 && dy === 0);
-            }
-            
-            // Always horizontal symmetry for pawns
-            const symmetry = 'Horizontal';
-            
-            // Determine if this is a straight move (slide) or non-straight move (jump)
-            const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
-            const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
-            // Orthogonal moves must slide, only diagonal/knight moves can jump
-            const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
-            
-            // Determine capture type
-            let capture;
-            if (pawnMoveCount === 1) {
-                // Single move must do both
-                capture = 'allowed';
-                hasMove = true;
-                hasCapture = true;
-            } else {
-                // Multiple moves: ensure we have at least one of each type
-                if (i === 0 && !hasMove) {
-                    capture = 'prohibited'; // move-only
-                    hasMove = true;
-                } else if (i === 1 && !hasCapture) {
-                    capture = 'required'; // capture-only
-                    hasCapture = true;
-                } else {
-                    // Random for additional moves
-                    const captureRand = rng.next();
-                    if (captureRand < 0.33) {
-                        capture = 'prohibited';
-                        hasMove = true;
-                    } else if (captureRand < 0.66) {
-                        capture = 'required';
-                        hasCapture = true;
-                    } else {
-                        capture = 'allowed';
-                        hasMove = true;
-                        hasCapture = true;
-                    }
-                }
-            }
-            
-            // Determine distance and requiresUnmoved
-            let distance;
-            let requiresUnmoved = false;
-            if (capture === 'prohibited') {
-                // Move-only can have distance 2-3 (with 3 being rare)
-                const distRand = rng.next();
-                if (distRand < 0.1) {
-                    distance = 3; // 10% chance of distance 3
-                    requiresUnmoved = true; // Only distance 3 requires unmoved
-                } else if (distRand < 0.55) {
-                    distance = 2; // 45% chance of distance 2
-                    requiresUnmoved = true; // Only distance 2 requires unmoved
-                } else {
-                    distance = 1; // 45% chance of distance 1 (always available)
-                }
-                
-                // If pawn only has one move and it's forward, it can't require unmoved
-                if (pawnMoveCount === 1 && requiresUnmoved) {
-                    requiresUnmoved = false;
-                    distance = 1; // Make it distance 1 so it's always available
-                }
-            } else {
-                // Capture moves or both always distance 1
-                distance = 1;
-            }
-            
-            pawnMoves.push(new Move([dx, dy], symmetry, distance, jump, requiresUnmoved, capture));
-        }
+        // Generate standard chess pawn
+        const pawnMoves = [
+            // Forward move (1 square always, up to 2 squares on first move)
+            new Move([0, 1], 'Horizontal', 2, 'prohibited', false, 'prohibited'),
+            // Diagonal capture
+            new Move([1, 1], 'Horizontal', 1, 'prohibited', false, 'required')
+        ];
         
         // Promotion pieces: all non-pawn, non-royal pieces
         const promotionPieces = pieces.filter(p => !p.royal);
         
         const pawnSymbol = this.selectSymbolForPiece(pawnMoves, false, true, usedSymbols, rng);
         usedSymbols.add(pawnSymbol);
+        
+        // Add en passant special move to pawn
+        const enPassantSpecial = new Special('enPassant', {});
+        
         const pawn = new Piece(
             pawnSymbol,
             pawnMoves,
             false, // Royal is always false
-            [],
+            [enPassantSpecial],
             promotionPieces,
-            6 + Math.floor(rng.next() * 2), // promotes on rank 6 or 7
+            7, // promotes on rank 7 (opponent's back rank for white, rank 0 for black)
             'choice' // Pawns get player choice promotion
         );
         pieces.push(pawn);
@@ -538,8 +457,8 @@ class PieceGenerator {
         if (!hasYMovement && moves.length > 0) {
             // Replace first move with one that has y movement
             const stepOptions = [0, 0, 0, 0, 1, 1, 1, 2, 2, 3];
-            const dx = stepOptions[Math.floor(random() * stepOptions.length)];
-            const dy = stepOptions.filter(v => v !== 0)[Math.floor(random() * stepOptions.filter(v => v !== 0).length)];
+            let dx = stepOptions[Math.floor(random() * stepOptions.length)];
+            let dy = stepOptions.filter(v => v !== 0)[Math.floor(random() * stepOptions.filter(v => v !== 0).length)];
             
             const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
             const orthogonalJump = isOrthogonal && (dx >= 2 || dy >= 2);
@@ -718,7 +637,10 @@ class PieceSerializer {
                 capture: move.capture
             })),
             royal: piece.royal,
-            specials: piece.specials,
+            specials: piece.specials.map(special => ({
+                type: special.type,
+                data: special.data
+            })),
             promotionPieces: piece.promotionPieces.map((_, idx) => idx), // Store indices instead of references
             promotionRank: piece.promotionRank,
             promotionType: piece.promotionType
@@ -746,11 +668,15 @@ class PieceSerializer {
                 )
             );
             
+            const specials = pieceData.specials.map(specialData =>
+                new Special(specialData.type, specialData.data)
+            );
+            
             return new Piece(
                 pieceData.name,
                 moves,
                 pieceData.royal,
-                pieceData.specials,
+                specials,
                 [], // Temporary empty array
                 pieceData.promotionRank,
                 pieceData.promotionType
