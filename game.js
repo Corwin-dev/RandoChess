@@ -30,8 +30,14 @@ class RandoChessApp {
         // Start AI game by default
         this.startAIGame();
         
-        // Auto-start multiplayer search in background
-        this.startMultiplayerSearch();
+        // Do not auto-start multiplayer search — make it optional via button
+        // Ensure UI shows we're currently playing the AI and expose the search button
+        if (this.uiManager) {
+            this.uiManager.setOpponentStatus('AI');
+            this.uiManager.showSearchButton();
+            // Wire search button to start matchmaking on demand
+            this.uiManager.onSearchClick(() => this.startMultiplayerSearch());
+        }
     }
 
     setupSeedControls() {
