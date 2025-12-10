@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="64" height="64" aria-hidden="true">
+  <defs>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e7e774" />
+      <stop offset="0.25" stop-color="#FFFF33" />
+      <stop offset="0.6" stop-color="#FFD700" />
+      <stop offset="1" stop-color="#B8860B" />
+    </linearGradient>
+  </defs>
+
+  <!-- Transparent background -->
+  <rect width="100%" height="100%" fill="transparent"/>
+
+  <!-- Parameters match PieceGenerator rendering: totalGridSize=8, cellSize=10, border=0.5 -->
+  <!-- Draw king reachable squares (8 neighbors around center at grid 3,3) -->
+  <!-- Coordinates: draw at (0.5 + x) * 10 for x in 0..6 -->
+
+  <!-- Black reachable squares -->
+  <g fill="#000000">
+    <!-- Adjacent orthogonal -->
+    <rect x="35" y="25" width="10" height="10" />
+    <rect x="35" y="45" width="10" height="10" />
+    <rect x="25" y="35" width="10" height="10" />
+    <rect x="45" y="35" width="10" height="10" />
+    <!-- Diagonals -->
+    <rect x="25" y="25" width="10" height="10" />
+    <rect x="45" y="25" width="10" height="10" />
+    <rect x="25" y="45" width="10" height="10" />
+    <rect x="45" y="45" width="10" height="10" />
+  </g>
+
+  <!-- Center gem for royal piece -->
+  <rect x="35" y="35" width="10" height="10" fill="url(#goldGrad)" />
+
+  <!-- Optional subtle outline to improve visibility at small sizes -->
+  <g fill="none" stroke="#000000" stroke-opacity="0.08" stroke-width="0.5">
+    <rect x="5" y="5" width="70" height="70" rx="2" />
+  </g>
+</svg>
+
