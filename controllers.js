@@ -143,6 +143,10 @@ class AIGameController extends GameController {
                 this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
             }
             this.isActive = false;
+            // Show end-of-match controls for multiplayer
+            if (this.uiManager && this instanceof MultiplayerGameController) {
+                this.uiManager.showEndmatchControls();
+            }
             return;
         }
         
@@ -319,6 +323,12 @@ class MultiplayerGameController extends GameController {
                 this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
             }
             this.isActive = false;
+            if (this.uiManager && this instanceof MultiplayerGameController) {
+                this.uiManager.showEndmatchControls();
+            }
+            if (this.uiManager && this instanceof MultiplayerGameController) {
+                this.uiManager.showEndmatchControls();
+            }
         }
     }
 }

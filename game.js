@@ -113,6 +113,8 @@ class RandoChessApp {
             if (this.uiManager) {
                 this.uiManager.setOpponentStatus(`Human (${color})`);
                 this.uiManager.hideSearchButton();
+                // Hide any end-of-match controls (we're in a fresh match)
+                if (this.uiManager.hideEndmatchControls) this.uiManager.hideEndmatchControls();
             }
         };
         
@@ -121,6 +123,36 @@ class RandoChessApp {
                 this.currentController.applyRemoteMove(move);
             }
         };
+        
+        // Update rematch UI status when server notifies
+        this.multiplayerClient.onRematchStatus = (mySelection, opponentSelection) => {
+            if (this.uiManager) {
+                this.uiManager.setRematchSelections(mySelection, opponentSelection);
+            }
+        };
+
+        // Wire end-of-match UI actions
+        if (this.uiManager) {
+            this.uiManager.onRematchRollClick(() => {
+                if (this.multiplayerClient) this.multiplayerClient.sendRematchRequest('roll');
+                // toggle our local highlight
+                this.uiManager.setRematchSelections('roll', null);
+            });
+            this.uiManager.onRematchKeepClick(() => {
+                if (this.multiplayerClient) this.multiplayerClient.sendRematchRequest('keep');
+                this.uiManager.setRematchSelections('keep', null);
+            });
+            this.uiManager.onNewOpponentClick(() => {
+                if (this.multiplayerClient) this.multiplayerClient.leaveAndQueue();
+                // hide controls while searching
+                this.uiManager.hideEndmatchControls();
+                this.uiManager.setOpponentStatus('Searching...');
+            });
+            this.uiManager.onAIMatchClick(() => {
+                // Refresh page to reset to AI match — simpler and reliable
+                window.location.reload();
+            });
+        }
         
         this.multiplayerClient.onOpponentLeft = () => {
             // Clear any lingering permanent status (e.g. 'Searching...') before showing this

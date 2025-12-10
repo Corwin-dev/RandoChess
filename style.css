@@ -284,6 +284,34 @@ footer a:hover {
     display: none;
 }
 
+/* Generic hidden helper */
+.hidden {
+    display: none !important;
+}
+
+/* End-of-match controls */
+.endmatch-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+.endmatch-btn {
+    padding: 10px 14px;
+    font-size: 0.95em;
+    background: #444;
+}
+
+.endmatch-btn.selected {
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.25) inset, 0 6px 12px rgba(0,0,0,0.2);
+    background: #667eea;
+}
+
+.endmatch-btn.opponent-selected {
+    outline: 2px dashed rgba(118,75,162,0.6);
+}
+
 .promotion-content {
     background: #808080; /* Neutral gray background for promotion icons */
     padding: 24px;

@@ -214,6 +214,11 @@ class UIManager {
         this.turnElement = document.getElementById('current-turn');
         this.searchButton = document.getElementById('search-opponent-btn');
         this.opponentElement = document.getElementById('opponent-status');
+        this.endmatchControls = document.getElementById('endmatch-controls');
+        this.rematchRollBtn = document.getElementById('rematch-roll-btn');
+        this.rematchKeepBtn = document.getElementById('rematch-keep-btn');
+        this.newOpponentBtn = document.getElementById('new-opponent-btn');
+        this.aiMatchBtn = document.getElementById('ai-match-btn');
         this.promotionDialog = document.getElementById('promotion-dialog');
         this.promotionChoices = document.getElementById('promotion-choices');
         this.permanentStatus = ''; // Store permanent status message (like search status)
@@ -306,6 +311,50 @@ class UIManager {
         if (this.searchButton) {
             this.searchButton.addEventListener('click', callback);
         }
+    }
+
+    // End-of-match controls
+    showEndmatchControls() {
+        if (this.endmatchControls) {
+            this.endmatchControls.classList.remove('hidden');
+        }
+    }
+
+    hideEndmatchControls() {
+        if (this.endmatchControls) {
+            this.endmatchControls.classList.add('hidden');
+        }
+        // clear any rematch highlights
+        if (this.rematchRollBtn) this.rematchRollBtn.classList.remove('selected');
+        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.remove('selected');
+        if (this.rematchRollBtn) this.rematchRollBtn.classList.remove('opponent-selected');
+        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.remove('opponent-selected');
+    }
+
+    onRematchRollClick(callback) {
+        if (this.rematchRollBtn) this.rematchRollBtn.addEventListener('click', callback);
+    }
+
+    onRematchKeepClick(callback) {
+        if (this.rematchKeepBtn) this.rematchKeepBtn.addEventListener('click', callback);
+    }
+
+    onNewOpponentClick(callback) {
+        if (this.newOpponentBtn) this.newOpponentBtn.addEventListener('click', callback);
+    }
+
+    onAIMatchClick(callback) {
+        if (this.aiMatchBtn) this.aiMatchBtn.addEventListener('click', callback);
+    }
+
+    // Visualize rematch selection state. mySelection: 'roll'|'keep'|null, opponentSelection: same
+    setRematchSelections(mySelection, opponentSelection) {
+        if (this.rematchRollBtn) this.rematchRollBtn.classList.toggle('selected', mySelection === 'roll');
+        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.toggle('selected', mySelection === 'keep');
+
+        // Indicate opponent selection by adding a faint highlight
+        if (this.rematchRollBtn) this.rematchRollBtn.classList.toggle('opponent-selected', opponentSelection === 'roll');
+        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.toggle('opponent-selected', opponentSelection === 'keep');
     }
 
     showPromotionDialog(pieces, color, onChoose) {

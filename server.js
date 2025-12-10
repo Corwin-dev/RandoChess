@@ -27,6 +27,12 @@ wss.on('connection', (ws) => {
                     console.log('JOIN_QUEUE received, pieces:', data.pieces ? 'present' : 'missing');
                     matchPlayer(ws, data.pieces);
                     break;
+                case 'REMATCH_REQUEST':
+                    handleRematchRequest(ws, data.mode);
+                    break;
+                case 'LEAVE_AND_QUEUE':
+                    handleLeaveAndQueue(ws);
+                    break;
                 case 'MOVE':
                     handleMove(ws, data);
                     break;
@@ -178,6 +184,103 @@ function handleDisconnect(ws, intentional = false) {
     // Clean up session
     gameSessions.delete(ws.sessionId);
     console.log(`Game session closed: ${ws.sessionId}`);
+}
+
+function handleRematchRequest(ws, mode) {
+    if (!ws.sessionId) return;
+    const session = gameSessions.get(ws.sessionId);
+    if (!session) return;
+
+    // store rematch request on player object
+    const player = session.players.find(p => p.ws === ws);
+    if (!player) return;
+    player.rematch = { mode: mode };
+
+    // Build status to send to both players
+    const p0 = session.players[0];
+    const p1 = session.players[1];
+
+    // Send REMATCH_STATUS to each player with fields: mySelection, opponentSelection
+    [p0, p1].forEach((recipient, idx) => {
+        const theirs = recipient === p0 ? p1 : p0;
+        if (recipient.ws.readyState === WebSocket.OPEN) {
+            recipient.ws.send(JSON.stringify({
+                type: 'REMATCH_STATUS',
+                mySelection: recipient.rematch ? recipient.rematch.mode : null,
+                opponentSelection: theirs.rematch ? theirs.rematch.mode : null
+            }));
+        }
+    });
+
+    // If both players have requested rematch, start a rematch
+    if (p0.rematch && p1.rematch) {
+        // Decide whether to keep placement: only if both chose 'keep'
+        const keepPlacement = (p0.rematch.mode === 'keep' && p1.rematch.mode === 'keep');
+
+        // Create new session preserving ws objects
+        const colors = Math.random() < 0.5 ? ['white', 'black'] : ['black', 'white'];
+
+        const newPlacement = keepPlacement ? session.placement : generatePlacement(session.pieces);
+
+        const newSessionId = generateSessionId();
+        const newSession = {
+            sessionId: newSessionId,
+            pieces: session.pieces,
+            placement: newPlacement,
+            players: [ { ws: p0.ws, color: colors[0], ready: false }, { ws: p1.ws, color: colors[1], ready: false } ],
+            currentTurn: 'white',
+            gameActive: true
+        };
+
+        // Update session mapping and sessionId on sockets
+        gameSessions.set(newSessionId, newSession);
+        p0.ws.sessionId = newSessionId;
+        p1.ws.sessionId = newSessionId;
+
+        // Notify both players similar to MATCHED
+        const msg0 = { type: 'REMATCH_START', color: colors[0], sessionId: newSessionId, pieces: newSession.pieces, placement: newSession.placement };
+        const msg1 = { type: 'REMATCH_START', color: colors[1], sessionId: newSessionId, pieces: newSession.pieces, placement: newSession.placement };
+
+        if (p0.ws.readyState === WebSocket.OPEN) p0.ws.send(JSON.stringify(msg0));
+        if (p1.ws.readyState === WebSocket.OPEN) p1.ws.send(JSON.stringify(msg1));
+
+        // Remove old session
+        if (session.sessionId) gameSessions.delete(session.sessionId);
+    }
+}
+
+function handleLeaveAndQueue(ws) {
+    // If player is in waiting queue, ignore
+    const qIndex = waitingQueue.findIndex(item => item.ws === ws);
+    if (qIndex !== -1) return;
+
+    if (!ws.sessionId) {
+        // Not in a session — just matchPlayer directly
+        matchPlayer(ws, null);
+        return;
+    }
+
+    const session = gameSessions.get(ws.sessionId);
+    if (!session) return;
+
+    // Find leaving player and other
+    const leavingIndex = session.players.findIndex(p => p.ws === ws);
+    if (leavingIndex === -1) return;
+    const other = session.players[1 - leavingIndex];
+
+    // Notify other that opponent left and requeue them
+    if (other.ws.readyState === WebSocket.OPEN) {
+        other.ws.send(JSON.stringify({ type: 'OPPONENT_LEFT', intentional: true }));
+        other.ws.sessionId = null;
+        matchPlayer(other.ws, session.pieces);
+    }
+
+    // Put leaving player into queue with their session pieces
+    ws.sessionId = null;
+    matchPlayer(ws, session.pieces);
+
+    // Remove the old session
+    if (session.sessionId) gameSessions.delete(session.sessionId);
 }
 
 function generatePlacement(pieces) {

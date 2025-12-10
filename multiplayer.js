@@ -15,6 +15,7 @@ class MultiplayerClient {
         this.onMove = null; // (move) => void
         this.onOpponentLeft = null; // () => void
         this.onMessage = null; // (message) => void
+        this.onRematchStatus = null; // (mySelection, opponentSelection) => void
     }
     
     connect(pieces) {
@@ -71,7 +72,7 @@ class MultiplayerClient {
                 }
                 break;
                 
-            case 'MATCHED':
+            case 'MATCHED': {
                 this.sessionId = data.sessionId;
                 this.playerColor = data.color;
                 this.placement = data.placement;
@@ -79,12 +80,13 @@ class MultiplayerClient {
                 console.log('Match found! Color:', data.color);
                 
                 // Deserialize pieces from server
-                const pieces = PieceSerializer.deserialize(data.pieces);
+                const deserialized = PieceSerializer.deserialize(data.pieces);
                 
                 if (this.onMatchFound) {
-                    this.onMatchFound(data.color, pieces, data.placement);
+                    this.onMatchFound(data.color, deserialized, data.placement);
                 }
                 break;
+            }
                 
             case 'MOVE':
                 if (this.onMove && data.move) {
@@ -105,6 +107,25 @@ class MultiplayerClient {
                     this.onMessage('Opponent left the game');
                 }
                 break;
+
+            case 'REMATCH_STATUS':
+                // { mySelection, opponentSelection }
+                if (this.onRematchStatus) {
+                    this.onRematchStatus(data.mySelection || null, data.opponentSelection || null);
+                }
+                break;
+
+            case 'REMATCH_START': {
+                // Server instructs to start new match; forwarded as MATCHED-like payload
+                this.sessionId = data.sessionId;
+                this.playerColor = data.color;
+                this.placement = data.placement;
+                const deserialized = PieceSerializer.deserialize(data.pieces);
+                if (this.onMatchFound) {
+                    this.onMatchFound(data.color, deserialized, data.placement);
+                }
+                break;
+            }
                 
             case 'ERROR':
                 console.error('Server error:', data.message);
@@ -124,6 +145,21 @@ class MultiplayerClient {
             gameOver: gameOver,
             winner: winner
         }));
+    }
+
+    // Request a rematch. mode = 'roll' | 'keep'
+    sendRematchRequest(mode) {
+        if (!this.isConnected || !this.ws) return;
+        this.ws.send(JSON.stringify({
+            type: 'REMATCH_REQUEST',
+            mode: mode
+        }));
+    }
+
+    // Leave current session but immediately re-enter the matchmaking queue
+    leaveAndQueue() {
+        if (!this.isConnected || !this.ws) return;
+        this.ws.send(JSON.stringify({ type: 'LEAVE_AND_QUEUE' }));
     }
     
     disconnect() {
