@@ -11,12 +11,8 @@ class RandoChessApp {
     }
 
     initialize() {
-        // Set up seed controls
-        this.setupSeedControls();
-        
-        // Generate initial pieces
+        // Generate initial pieces (seed is internal/hidden)
         this.pieces = PieceGenerator.generateRandomPieces();
-        this.displayCurrentSeed();
         console.log('Generated pieces:', this.pieces.map(p => p.name));
         
         // Set up UI
@@ -40,30 +36,7 @@ class RandoChessApp {
         }
     }
 
-    setupSeedControls() {
-        const rerollBtn = document.getElementById('reroll-board-btn');
-        const resetBtn = document.getElementById('reset-board-btn');
-        const seedInput = document.getElementById('seed-input');
-
-        rerollBtn.addEventListener('click', () => {
-            const seed = seedInput.value ? parseInt(seedInput.value) : null;
-            this.pieces = PieceGenerator.generateRandomPieces(seed);
-            this.displayCurrentSeed();
-            console.log('Generated new pieces with seed:', PieceGenerator.lastUsedSeed);
-            console.log('Pieces:', this.pieces.map(p => p.name));
-            this.startAIGame();
-        });
-
-        resetBtn.addEventListener('click', () => {
-            // Just reset the board/game with the current pieces
-            this.startAIGame();
-        });
-    }
-    
-    displayCurrentSeed() {
-        const seedDisplay = document.getElementById('current-seed');
-        seedDisplay.textContent = `Current: ${PieceGenerator.lastUsedSeed}`;
-    }
+    // Seed controls and seed display removed; seed remains internal to PieceGenerator
 
     startAIGame(difficulty = 'hard') {
         // Stop current game if any
@@ -77,7 +50,7 @@ class RandoChessApp {
             this.renderer,
             this.uiManager,
             difficulty,
-            PieceGenerator.lastUsedSeed
+            null
         );
         
         this.renderer.attachEventListener((row, col) => {
@@ -125,7 +98,7 @@ class RandoChessApp {
                 this.uiManager,
                 this.multiplayerClient,
                 color,
-                PieceGenerator.lastUsedSeed
+                null
             );
             
             this.renderer.attachEventListener((row, col) => {

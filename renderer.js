@@ -306,46 +306,64 @@ class UIManager {
 
     showPromotionDialog(pieces, color, onChoose) {
         if (!this.promotionDialog || !this.promotionChoices) return;
-        
+
         // Clear previous choices
         this.promotionChoices.innerHTML = '';
-        
-        console.log('Showing promotion dialog for pieces:', pieces);
-        
-        // Create choice buttons for each piece
-        pieces.forEach((piece, index) => {
+
+        // Build list of visible choices (preserve original indices) and exclude royals
+        const choices = pieces
+            .map((piece, idx) => ({ piece, idx }))
+            .filter(item => !item.piece.royal);
+
+        if (choices.length === 0) {
+            // Nothing to choose (shouldn't normally happen) - fallback to first piece
+            console.warn('No promotion choices available (all pieces royal?). Defaulting to first.');
+            this.hidePromotionDialog();
+            onChoose(0);
+            return;
+        }
+
+        // Create choice buttons showing only the generated icon on a neutral gray background
+        choices.forEach(({ piece, idx }) => {
             const choice = document.createElement('div');
-            choice.className = `promotion-choice ${color}`;
-            choice.title = `Promote to ${piece.name}`;
-            
+            choice.className = 'promotion-choice';
+            // Neutral gray background for each icon
+            choice.style.background = '#808080';
+            choice.style.width = '100px';
+            choice.style.height = '100px';
+            choice.style.display = 'flex';
+            choice.style.alignItems = 'center';
+            choice.style.justifyContent = 'center';
+            choice.style.cursor = 'pointer';
+            choice.style.border = 'none';
+            choice.style.padding = '6px';
+
             // Try to generate and add the movement pattern icon
             try {
-                console.log('Creating icon for piece:', piece.name);
                 const icon = PieceGenerator.createMovementPatternIcon(piece, 80);
-                console.log('Icon created:', icon);
                 icon.style.display = 'block';
                 icon.style.width = '80px';
                 icon.style.height = '80px';
+                icon.style.background = 'transparent';
+                icon.style.boxSizing = 'border-box';
                 choice.appendChild(icon);
-                
-                // Add piece name below the icon
-                const nameLabel = document.createElement('div');
-                nameLabel.className = 'promotion-piece-name';
-                nameLabel.textContent = piece.name;
-                choice.appendChild(nameLabel);
             } catch (error) {
-                console.error('Error creating icon:', error);
-                // Fallback to text-only display
-                choice.textContent = piece.name;
+                console.error('Error creating icon for promotion choice:', error);
+                // Fallback: show piece symbol or name minimally
+                const fallback = document.createElement('div');
+                fallback.textContent = piece.name || '?';
+                fallback.style.color = '#fff';
+                choice.appendChild(fallback);
             }
-            
+
             choice.addEventListener('click', () => {
                 this.hidePromotionDialog();
-                onChoose(index);
+                onChoose(idx);
             });
+
             this.promotionChoices.appendChild(choice);
         });
-        
+
         // Show dialog
         this.promotionDialog.classList.remove('hidden');
     }

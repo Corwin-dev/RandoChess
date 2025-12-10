@@ -224,14 +224,40 @@ class PieceGenerator {
             seed = Date.now() % 1000000;
         }
         
-        // Store seed for retrieval
-        this.lastUsedSeed = seed;
+        // Seed is used internally for deterministic generation but not exposed
         
         // Create seeded random number generator
         const rng = new SeededRandom(seed);
         
         const pieces = [];
         const usedSymbols = new Set(); // Track used symbols
+        const usedSignatures = new Set(); // Track piece signatures to enforce uniqueness
+
+        // Predefine standard pawn moves/signature so we can reserve it
+        const pawnMovesPreset = [
+            new Move([0, 1], 'Horizontal', 1, 'prohibited', false, 'prohibited'),
+            new Move([1, 1], 'Horizontal', 1, 'prohibited', false, 'required'),
+            new Move([0, 1], 'Horizontal', 2, 'prohibited', true, 'prohibited')
+        ];
+
+        // Helper to compute a structural signature for a piece (moves, specials, royal, promotionType, upgradeMoves)
+        const pieceSignature = (p) => {
+            const mv = (m) => `${m.step[0]},${m.step[1]}|${m.symmetry}|${m.distance}|${m.jump}|${m.requiresUnmoved}|${m.capture}`;
+            const ups = (p.upgradeMoves || []).map(mv).sort().join(';');
+            const moves = (p.moves || []).map(mv).sort().join(';');
+            const specs = (p.specials || []).map(s => s.type).sort().join(',');
+            return `${p.royal ? 'R' : 'N'}|${p.promotionType||''}|${specs}|MOVES:${moves}|UP:${ups}`;
+        };
+
+        // Reserve pawn signature so no generated piece matches the pawn exactly
+        const pawnSignatureReserved = pieceSignature({
+            moves: pawnMovesPreset,
+            specials: [],
+            royal: false,
+            promotionType: 'choice',
+            upgradeMoves: []
+        });
+        usedSignatures.add(pawnSignatureReserved);
 
         // Generate Royal piece (must have one)
         // Royal is fixed to behave like a King: one square in any direction
@@ -260,15 +286,19 @@ class PieceGenerator {
             null
         );
         pieces.push(royal);
+        // Reserve royal signature so no other piece matches king
+        usedSignatures.add(pieceSignature(royal));
 
-        // Generate 5 random non-royal pieces
-        for (let i = 0; i < 5; i++) {
-            const numMoves = 1 + Math.floor(rng.next() + rng.next() + rng.next()); // 1-3 moves
-            const moves = this.generateRandomMoves(numMoves, false, rng);
+        // Generate 4 non-royal pieces with deterministic roles:
+        // Index mapping after push: [0]=royal, [1]=powerhouse, [2]=slider, [3]=trickster, [4]=flower, [5]=pawn
+        // n is random between 2 and 4 inclusive
+        const n = 1 + Math.floor(rng.next() * 2); // 1..2   
+
+        // Helper to create a piece and handle promotions
+        const createNonRoyal = (moves) => {
             const symbol = this.selectSymbolForPiece(moves, false, false, usedSymbols, rng);
             usedSymbols.add(symbol);
-            
-            // Check if piece needs move-upgrade promotion
+
             let promotionRank = -1;
             let promotionType = null;
             let upgradeMoves = [];
@@ -276,22 +306,151 @@ class PieceGenerator {
             if (this.isDirectionallyRestricted(moves)) {
                 promotionRank = this.getFarthestReachableRank(moves);
                 promotionType = 'move-upgrade';
-                // Pre-generate upgrade moves now (use seeded rng)
                 upgradeMoves = this.generateUpgradeMoves(moves, rng);
             }
 
-            const piece = new Piece(
-                symbol,
-                moves,
-                false,
-                [],
-                [],
-                promotionRank,
-                promotionType,
-                upgradeMoves
-            );
-            pieces.push(piece);
+            return new Piece(symbol, moves, false, [], [], promotionRank, promotionType, upgradeMoves);
+        };
+
+        // Powerhouse (queen position) - n+2 moves
+        // Ensure uniqueness: reroll if signature matches existing piece
+        let powerhouse;
+        {
+            let attempts = 0;
+            do {
+                const moves = this.generateRandomMoves(n + 2, false, rng);
+                const candidate = createNonRoyal(moves);
+                const sig = pieceSignature(candidate);
+                if (!usedSignatures.has(sig)) {
+                    powerhouse = candidate;
+                    usedSignatures.add(sig);
+                    pieces.push(powerhouse);
+                    break;
+                }
+                attempts++;
+            } while (attempts < 30);
+            if (!powerhouse) {
+                // fallback: accept last candidate
+                const moves = this.generateRandomMoves(n + 2, false, rng);
+                powerhouse = createNonRoyal(moves);
+                pieces.push(powerhouse);
+                usedSignatures.add(pieceSignature(powerhouse));
+            }
         }
+
+        // Slider (both rook positions) - n+1 moves
+        // Generate one slider move-set (single generated piece; placement duplicates it)
+        // Slider (generate once; placement duplicates on board)
+        let slider;
+        {
+            let attempts = 0;
+            do {
+                const moves = this.generateRandomMoves(n + 1, false, rng);
+                const candidate = createNonRoyal(moves);
+                const sig = pieceSignature(candidate);
+                if (!usedSignatures.has(sig)) {
+                    slider = candidate;
+                    // Enforce Slider constraints: at least one sliding unlimited move (distance -1)
+                    // and ensure Slider is not purely horizontal-symmetry.
+                    let hasUnlimited = slider.moves.some(m => m.distance === -1 && m.jump !== 'required');
+                    if (!hasUnlimited) {
+                        // Try to convert an existing sliding move to unlimited
+                        const slideIdx = slider.moves.findIndex(m => m.jump !== 'required');
+                        if (slideIdx >= 0) {
+                            slider.moves[slideIdx].distance = -1;
+                        } else {
+                            // No slide moves exist (unlikely) - add a standard orthogonal slide
+                            slider.moves.push(new Move([1, 0], '4way', -1, 'prohibited', false));
+                        }
+                    }
+
+                    // Ensure at least one move has symmetry other than 'Horizontal'
+                    const hasNonHorizontal = slider.moves.some(m => m.symmetry && m.symmetry !== 'Horizontal');
+                    if (!hasNonHorizontal) {
+                        // Prefer to change a slide move's symmetry to 4way
+                        const idx = slider.moves.findIndex(m => m.jump !== 'required');
+                        if (idx >= 0) {
+                            slider.moves[idx].symmetry = '4way';
+                        } else {
+                            slider.moves[0].symmetry = '4way';
+                        }
+                    }
+
+                    usedSignatures.add(sig);
+                    pieces.push(slider);
+                    break;
+                }
+                attempts++;
+            } while (attempts < 30);
+            if (!slider) {
+                const moves = this.generateRandomMoves(n + 1, false, rng);
+                slider = createNonRoyal(moves);
+                // same enforcement for fallback
+                if (!slider.moves.some(m => m.distance === -1 && m.jump !== 'required')) {
+                    const slideIdx = slider.moves.findIndex(m => m.jump !== 'required');
+                    if (slideIdx >= 0) slider.moves[slideIdx].distance = -1;
+                    else slider.moves.push(new Move([1, 0], '4way', -1, 'prohibited', false));
+                }
+                if (!slider.moves.some(m => m.symmetry && m.symmetry !== 'Horizontal')) {
+                    const idx = slider.moves.findIndex(m => m.jump !== 'required');
+                    if (idx >= 0) slider.moves[idx].symmetry = '4way';
+                    else slider.moves[0].symmetry = '4way';
+                }
+                pieces.push(slider);
+                usedSignatures.add(pieceSignature(slider));
+            }
+        }
+
+        // Minor 1 (bishop/knight position) - n moves
+        let minor1;
+        {
+            let attempts = 0;
+            do {
+                const moves = this.generateRandomMoves(n, false, rng);
+                const candidate = createNonRoyal(moves);
+                const sig = pieceSignature(candidate);
+                if (!usedSignatures.has(sig)) {
+                    minor1 = candidate;
+                    usedSignatures.add(sig);
+                    pieces.push(minor1);
+                    break;
+                }
+                attempts++;
+            } while (attempts < 30);
+            if (!minor1) {
+                const moves = this.generateRandomMoves(n, false, rng);
+                minor1 = createNonRoyal(moves);
+                pieces.push(minor1);
+                usedSignatures.add(pieceSignature(minor1));
+            }
+        }
+
+        // Minor 2 (bishop/knight position) - n moves
+        let minor2;
+        {
+            let attempts = 0;
+            do {
+                const moves = this.generateRandomMoves(n, false, rng);
+                const candidate = createNonRoyal(moves);
+                const sig = pieceSignature(candidate);
+                if (!usedSignatures.has(sig)) {
+                    minor2 = candidate;
+                    usedSignatures.add(sig);
+                    pieces.push(minor2);
+                    break;
+                }
+                attempts++;
+            } while (attempts < 30);
+            if (!minor2) {
+                const moves = this.generateRandomMoves(n, false, rng);
+                minor2 = createNonRoyal(moves);
+                pieces.push(minor2);
+                usedSignatures.add(pieceSignature(minor2));
+            }
+        }
+
+        // Note: Do NOT generate a separate rook clone here. The board placement logic
+        // will duplicate the rook on the back rank. We only want one generated rook type.
 
         // Generate standard chess pawn
         const pawnMoves = [
@@ -304,7 +463,10 @@ class PieceGenerator {
         ];
         
         // Promotion pieces: all non-pawn, non-royal pieces
-        const promotionPieces = pieces.filter(p => !p.royal);
+        // Pawns use 'choice' promotionType, so exclude any piece that is a pawn by filtering out
+        // pieces with promotionType === 'choice'. This prevents the pawn itself from appearing
+        // as a promotion target.
+        const promotionPieces = pieces.filter(p => !p.royal && p.promotionType !== 'choice');
         
         const pawnSymbol = this.selectSymbolForPiece(pawnMoves, false, true, usedSymbols, rng);
         usedSymbols.add(pawnSymbol);
@@ -654,17 +816,10 @@ class PieceSerializer {
                 type: special.type,
                 data: special.data
             })),
-            promotionPieces: piece.promotionPieces.map((_, idx) => idx), // Store indices instead of references
+            // Store indices into the top-level pieces array for promotion references
+            promotionPieces: piece.promotionPieces.map(promo => pieces.indexOf(promo)),
             promotionRank: piece.promotionRank,
-            promotionType: piece.promotionType,
-            upgradeMoves: (piece.upgradeMoves || []).map(move => ({
-                step: move.step,
-                symmetry: move.symmetry,
-                distance: move.distance,
-                jump: move.jump,
-                requiresUnmoved: move.requiresUnmoved,
-                capture: move.capture
-            }))
+            promotionType: piece.promotionType
         }));
     }
 
@@ -688,37 +843,27 @@ class PieceSerializer {
                     moveData.capture
                 )
             );
-
-            const upgradeMoves = (pieceData.upgradeMoves || []).map(moveData =>
-                new Move(
-                    moveData.step,
-                    moveData.symmetry,
-                    moveData.distance,
-                    moveData.jump,
-                    moveData.requiresUnmoved,
-                    moveData.capture
-                )
-            );
-
+            
             const specials = pieceData.specials.map(specialData =>
                 new Special(specialData.type, specialData.data)
             );
-
+            
             return new Piece(
                 pieceData.name,
                 moves,
                 pieceData.royal,
                 specials,
-                [], // Temporary empty array for promotionPieces
+                [], // Temporary empty array
                 pieceData.promotionRank,
-                pieceData.promotionType,
-                upgradeMoves
+                pieceData.promotionType
             );
         });
         
-        // Second pass: fix promotion piece references
+        // Second pass: fix promotion piece references (ignore invalid indices)
         piecesData.forEach((pieceData, idx) => {
-            pieces[idx].promotionPieces = pieceData.promotionPieces.map(promoIdx => pieces[promoIdx]);
+            pieces[idx].promotionPieces = (pieceData.promotionPieces || [])
+                .map(promoIdx => pieces[promoIdx])
+                .filter(p => !!p);
         });
         
         return pieces;
@@ -727,3 +872,12 @@ class PieceSerializer {
 
 // Verify the function exists
 console.log('PieceGenerator.createMovementPatternIcon exists?', typeof PieceGenerator.createMovementPatternIcon === 'function');
+
+// Export for Node testing/runtime if available
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports.PieceGenerator = PieceGenerator;
+    module.exports.Piece = Piece;
+    module.exports.Move = Move;
+    module.exports.Special = Special;
+    module.exports.PieceSerializer = PieceSerializer;
+}

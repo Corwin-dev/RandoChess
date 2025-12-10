@@ -181,24 +181,35 @@ function handleDisconnect(ws, intentional = false) {
 }
 
 function generatePlacement(pieces) {
-    // Find the strongest non-royal piece (most moves)
-    // pieces[0] = royal, pieces[1-5] = random non-royal, pieces[6] = pawn
-    let strongestIndex = 1;
-    let maxMoves = pieces[1].moves.length;
-    for (let i = 2; i <= 5; i++) {
-        if (pieces[i].moves.length > maxMoves) {
-            maxMoves = pieces[i].moves.length;
+    // Find the strongest non-royal, non-pawn piece (most moves)
+    // pieces[0] = royal, other indices include non-royal pieces and a pawn
+    // Detect pawn index (pawn has promotionType === 'choice' or enPassant special)
+    let pawnIndex = pieces.findIndex(p => (p && (p.promotionType === 'choice' || (p.specials && p.specials.some(s => s.type === 'enPassant')))));
+    if (pawnIndex === -1) {
+        // Fallback: assume last piece is pawn
+        pawnIndex = pieces.length - 1;
+    }
+
+    // Build list of candidate indices for strongest piece (exclude royal at 0 and pawn)
+    const candidates = [];
+    for (let i = 1; i < pieces.length; i++) {
+        if (i === pawnIndex) continue;
+        candidates.push(i);
+    }
+
+    // Default to first candidate
+    let strongestIndex = candidates[0] || 1;
+    let maxMoves = (pieces[strongestIndex] && pieces[strongestIndex].moves) ? pieces[strongestIndex].moves.length : 0;
+    for (const i of candidates) {
+        const movesLen = (pieces[i] && pieces[i].moves) ? pieces[i].moves.length : 0;
+        if (movesLen > maxMoves) {
+            maxMoves = movesLen;
             strongestIndex = i;
         }
     }
-    
-    // Get remaining pieces for symmetric placement
-    const remainingPieces = [];
-    for (let i = 1; i <= 5; i++) {
-        if (i !== strongestIndex) {
-            remainingPieces.push(i);
-        }
-    }
+
+    // Get remaining pieces for symmetric placement (exclude strongest and pawn)
+    const remainingPieces = candidates.filter(i => i !== strongestIndex);
     
     // Shuffle for random but consistent placement
     for (let i = remainingPieces.length - 1; i > 0; i--) {

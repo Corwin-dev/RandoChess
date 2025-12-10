@@ -58,7 +58,7 @@ class ChessEngine {
         }
 
         // Second rank - all pawns
-        const pawnIndex = 6; // Last piece is always the pawn
+        const pawnIndex = 5; // Last piece is always the pawn (index 5)
         for (let col = 0; col < 8; col++) {
             this.board[1][col] = {
                 piece: this.pieces[pawnIndex],
@@ -80,19 +80,19 @@ class ChessEngine {
         const random = rng ? () => rng.next() : Math.random;
         
         // Find the strongest non-royal piece (most moves)
-        // pieces[0] = royal, pieces[1-5] = random non-royal, pieces[6] = pawn
+        // pieces[0] = royal, pieces[1-4] = random non-royal, pieces[5] = pawn
         let strongestIndex = 1;
         let maxMoves = this.pieces[1].moves.length;
-        for (let i = 2; i <= 5; i++) {
+        for (let i = 2; i <= 4; i++) {
             if (this.pieces[i].moves.length > maxMoves) {
                 maxMoves = this.pieces[i].moves.length;
                 strongestIndex = i;
             }
         }
-        
-        // Get remaining pieces for symmetric placement
+
+        // Get remaining pieces for symmetric placement (exclude strongest)
         const remainingPieces = [];
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 4; i++) {
             if (i !== strongestIndex) {
                 remainingPieces.push(i);
             }
@@ -779,4 +779,9 @@ class ChessEngine {
         
         return clone;
     }
+}
+
+// Export for Node testing/runtime if available
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports.ChessEngine = ChessEngine;
 }
