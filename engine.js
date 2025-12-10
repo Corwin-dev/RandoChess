@@ -320,6 +320,8 @@ class ChessEngine {
         const gridExtension = 8;
 
         for (const move of piece.moves) {
+            if (move.requiresUnmoved && cellData.hasMoved) continue;
+
             const steps = move.getSteps();
 
             for (const [dx, dy] of steps) {
