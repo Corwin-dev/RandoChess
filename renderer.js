@@ -228,8 +228,11 @@ class UIManager {
         this.opponentIcon = document.getElementById('opponent-icon');
         this.connectionBubble = document.getElementById('connection-bubble');
         this.connectionIcon = document.getElementById('connection-icon');
+        this.gameBubble = document.getElementById('game-bubble');
+        this.gameIcon = document.getElementById('game-icon');
         this.thinkingBubble = document.getElementById('thinking-bubble');
-        this.clockElement = document.getElementById('clock');
+        this.clockPlayer = document.getElementById('clock-player');
+        this.clockOpponent = document.getElementById('clock-opponent');
         this.messageElement = document.getElementById('hud-message'); // unused currently but kept
         this.turnElement = document.getElementById('current-turn');
         this.searchButton = document.getElementById('toggle-search-btn');
@@ -242,6 +245,27 @@ class UIManager {
         this.promotionChoices = document.getElementById('promotion-choices');
         this.permanentStatus = ''; // Store permanent status message (like search status)
         this.messageTimeout = null; // Track active message timeout
+        // Clock / time-control state
+        this.clockInterval = null;
+        this.clockOwner = null; // 'player'|'ai'|'opponent'
+        this.timeControl = { base: 300, inc: 15 };
+        this.remaining = { player: this.timeControl.base, opponent: this.timeControl.base, ai: this.timeControl.base };
+    }
+
+    // Game status bubble (separate from low-level connection status)
+    // token can be a short emoji or a semantic key like 'searching'|'idle'|'in-game'
+    setGameStatus(token) {
+        if (!this.gameBubble) return;
+        const map = {
+            searching: '🔍',
+            waiting: '⏳',
+            'in-game': '♟️',
+            idle: '⏹️',
+            finished: '🏁'
+        };
+        const emoji = token && token.length <= 2 ? token : (map[token] || token || '⏳');
+        if (this.gameIcon) this.gameIcon.textContent = emoji;
+        else this.gameBubble.textContent = emoji;
     }
 
     showMessage(msg, duration = 3000) {
@@ -391,7 +415,10 @@ class UIManager {
         if (this.opponentIcon) this.opponentIcon.textContent = '';
         if (this.messageElement) this.messageElement.textContent = '';
         if (this.connectionBubble) this.connectionBubble.textContent = '';
-        if (this.clockElement) this.clockElement.textContent = '';
+        if (this.connectionIcon) this.connectionIcon.textContent = '';
+        if (this.thinkingBubble) this.thinkingBubble.textContent = '';
+        if (this.clockPlayer) this.clockPlayer.textContent = '';
+        if (this.clockOpponent) this.clockOpponent.textContent = '';
     }
 
     // Connection/search status bubble
@@ -423,12 +450,82 @@ class UIManager {
         this.thinkingBubble.textContent = emoji;
     }
 
-    // Set the clock text (mm:ss)
+    // Set both clocks manually (keeps alingual format). If passed a numeric string like '00:00', applies to both.
     setClock(text) {
-        if (!this.clockElement) return;
-        // Keep clock alingual: emoji + numeric time. If caller gives only numbers, prefix with timer icon.
         const hasDigits = /\d/.test(text || '');
-        this.clockElement.textContent = hasDigits ? `⏱️ ${text}` : text || '⏱️ 00:00';
+        const content = hasDigits ? `⏱️ ${text}` : (text || '⏱️ 00:00');
+        if (this.clockPlayer) this.clockPlayer.textContent = content;
+        if (this.clockOpponent) this.clockOpponent.textContent = content;
+    }
+
+    // Time-control setup: base seconds and increment seconds
+    setTimeControl(baseSeconds, incrementSeconds) {
+        this.timeControl.base = Number(baseSeconds) || 300;
+        this.timeControl.inc = Number(incrementSeconds) || 15;
+        // Initialize remaining times
+        this.remaining.player = this.timeControl.base;
+        this.remaining.opponent = this.timeControl.base;
+        this.remaining.ai = this.timeControl.base;
+        this.renderClocks();
+    }
+
+    // Add increment to owner's remaining time (owner: 'player'|'opponent'|'ai')
+    addIncrement(owner) {
+        if (!owner) return;
+        const inc = this.timeControl.inc || 0;
+        if (!this.remaining[owner]) this.remaining[owner] = 0;
+        this.remaining[owner] = Math.max(0, this.remaining[owner] + inc);
+        this.renderClocks();
+    }
+
+    // Render both clock displays from remaining times
+    renderClocks() {
+        if (this.clockPlayer) this.clockPlayer.textContent = `⏱️ ${this.formatTime(this.remaining.player)}`;
+        if (this.clockOpponent) this.clockOpponent.textContent = `⏱️ ${this.formatTime(this.remaining.opponent)}`;
+    }
+
+    // Start decrementing the clock for the given owner (player/opponent/ai)
+    startClock(owner) {
+        if (!owner) return;
+        // stop any existing interval
+        if (this.clockInterval) {
+            clearInterval(this.clockInterval);
+            this.clockInterval = null;
+        }
+        this.clockOwner = owner;
+        // Ensure remaining time exists
+        if (typeof this.remaining[owner] === 'undefined') this.remaining[owner] = this.timeControl.base;
+        // Show thinking icon if AI
+        if (owner === 'ai') this.setThinking('thinking');
+        else this.setThinking('');
+        this.renderClocks();
+
+        this.clockInterval = setInterval(() => {
+            if (typeof this.remaining[owner] === 'undefined') return;
+            this.remaining[owner] = Math.max(0, this.remaining[owner] - 1);
+            this.renderClocks();
+            // If time runs out, stop interval and show timeout symbol
+            if (this.remaining[owner] <= 0) {
+                clearInterval(this.clockInterval);
+                this.clockInterval = null;
+                this.setThinking('');
+                if (this.connectionIcon) this.connectionIcon.textContent = '⏳';
+            }
+        }, 1000);
+    }
+
+    stopClock() {
+        if (this.clockInterval) {
+            clearInterval(this.clockInterval);
+            this.clockInterval = null;
+        }
+        this.clockOwner = null;
+    }
+
+    formatTime(seconds) {
+        const mm = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const ss = (seconds % 60).toString().padStart(2, '0');
+        return `${mm}:${ss}`;
     }
 
     onSearchClick(callback) {

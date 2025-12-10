@@ -13,6 +13,31 @@ class ChessEngine {
         this.lastMove = null; // {fromRow, fromCol, toRow, toCol, piece} for en passant tracking
     }
 
+    // Create a shallow-cloned Piece instance and optionally apply a king movement
+    // variant. This ensures each placed royal can be an independent instance
+    // (so white and black kings can have different movement sets).
+    _clonePieceWithVariant(piece, variant = 'normal') {
+        // Clone moves deeply
+        const clonedMoves = piece.moves.map(m => new Move([...m.step], m.symmetry, m.distance, m.jump, m.requiresUnmoved, m.capture));
+        const clonedSpecials = piece.specials.map(s => new Special(s.type, Object.assign({}, s.data)));
+
+        // Apply king-specific variant overrides
+        if (piece.royal && variant && variant !== 'normal') {
+            if (variant === 'orthogonal') {
+                // Restrict to orthogonal single-step moves
+                const orth = [ [1,0], [-1,0], [0,1], [0,-1] ];
+                const orthMoves = orth.map(step => new Move(step, null, 1, 'prohibited', false));
+                return new Piece(piece.name, orthMoves, piece.royal, clonedSpecials, piece.promotionPieces, piece.promotionRank, piece.promotionType, piece.upgradeMoves);
+            } else if (variant === 'diagonal') {
+                const diag = [ [1,1], [1,-1], [-1,1], [-1,-1] ];
+                const diagMoves = diag.map(step => new Move(step, null, 1, 'prohibited', false));
+                return new Piece(piece.name, diagMoves, piece.royal, clonedSpecials, piece.promotionPieces, piece.promotionRank, piece.promotionType, piece.upgradeMoves);
+            }
+        }
+
+        return new Piece(piece.name, clonedMoves, piece.royal, clonedSpecials, piece.promotionPieces, piece.promotionRank, piece.promotionType, piece.upgradeMoves);
+    }
+
     // Initialize the board with pieces
     initializeBoard(placement = null) {
         // Clear the board
@@ -45,16 +70,39 @@ class ChessEngine {
         // Place back rank pieces
         for (let col = 0; col < 8; col++) {
             const pieceType = backRankPieces[col];
-            this.board[0][col] = {
-                piece: this.pieces[pieceType],
-                color: 'black',
-                hasMoved: false
-            };
-            this.board[7][col] = {
-                piece: this.pieces[pieceType],
-                color: 'white',
-                hasMoved: false
-            };
+            // Use per-square clones for royal pieces so each king can have
+            // an independent movement variant when the placement includes
+            // `kingVariants` (sent by the server). For non-royal pieces we
+            // continue to reference the shared piece type object.
+            const isRoyalType = (this.pieces[pieceType] && this.pieces[pieceType].royal);
+
+            if (isRoyalType) {
+                const variantBlack = this.placement && this.placement.kingVariants ? this.placement.kingVariants.black : 'normal';
+                const variantWhite = this.placement && this.placement.kingVariants ? this.placement.kingVariants.white : 'normal';
+
+                this.board[0][col] = {
+                    piece: this._clonePieceWithVariant(this.pieces[pieceType], variantBlack),
+                    color: 'black',
+                    hasMoved: false
+                };
+
+                this.board[7][col] = {
+                    piece: this._clonePieceWithVariant(this.pieces[pieceType], variantWhite),
+                    color: 'white',
+                    hasMoved: false
+                };
+            } else {
+                this.board[0][col] = {
+                    piece: this.pieces[pieceType],
+                    color: 'black',
+                    hasMoved: false
+                };
+                this.board[7][col] = {
+                    piece: this.pieces[pieceType],
+                    color: 'white',
+                    hasMoved: false
+                };
+            }
         }
 
         // Second rank - all pawns
@@ -109,6 +157,7 @@ class ChessEngine {
             strongestIndex: strongestIndex
         };
     }
+
 
     // Find the king position for a given color
     findKing(color) {

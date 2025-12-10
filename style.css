@@ -246,6 +246,15 @@ footer a:hover {
     color: #666;
 }
 
+.clock-pair {
+    display: flex;
+    gap: 8px;
+}
+.clock-pair .clock {
+    min-width: 64px;
+    text-align: center;
+}
+
 .hud-toggle {
     background: transparent;
     border: none;

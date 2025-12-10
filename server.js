@@ -27,6 +27,15 @@ wss.on('connection', (ws) => {
                     console.log('JOIN_QUEUE received, pieces:', data.pieces ? 'present' : 'missing');
                     matchPlayer(ws, data.pieces);
                     break;
+                case 'LEAVE_QUEUE':
+                    // Remove this socket from the waiting queue if present
+                    const qIndex = waitingQueue.findIndex(item => item.ws === ws);
+                    if (qIndex !== -1) {
+                        waitingQueue.splice(qIndex, 1);
+                        console.log('Client requested LEAVE_QUEUE; removed from waiting queue');
+                        ws.send(JSON.stringify({ type: 'LEFT_QUEUE' }));
+                    }
+                    break;
                 case 'REMATCH_REQUEST':
                     handleRematchRequest(ws, data.mode);
                     break;
@@ -319,10 +328,25 @@ function generatePlacement(pieces) {
         const j = Math.floor(Math.random() * (i + 1));
         [remainingPieces[i], remainingPieces[j]] = [remainingPieces[j], remainingPieces[i]];
     }
-    
+
+    // Allow independent king movement variants per side so each king can
+    // independently be normal, orthogonal-only, or diagonal-only. These
+    // flags get sent to clients as part of the placement so both players
+    // see the same behavior.
+    const pickVariant = () => {
+        const r = Math.random();
+        if (r < 0.12) return 'orthogonal';
+        if (r < 0.24) return 'diagonal';
+        return 'normal';
+    };
+
     return {
         remainingPieces: remainingPieces,
-        strongestIndex: strongestIndex
+        strongestIndex: strongestIndex,
+        kingVariants: {
+            white: pickVariant(),
+            black: pickVariant()
+        }
     };
 }
 

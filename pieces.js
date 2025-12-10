@@ -328,13 +328,26 @@ class PieceGenerator {
         usedSignatures.add(pawnSignatureReserved);
 
         // Generate Royal piece (must have one)
-        // Royal is fixed to behave like a King: one square in any direction
+        // Royal is king-like most of the time, but occasionally restricted
+        // to only orthogonal or only diagonal moves for variety.
         const royalMoves = [];
-        const kingSteps = [
+        const kingStepsAll = [
             [1, 0], [-1, 0], [0, 1], [0, -1],
             [1, 1], [1, -1], [-1, 1], [-1, -1]
         ];
-        for (const step of kingSteps) {
+        // Small random chance to restrict the king's movement set
+        // Use the seeded RNG so generation stays deterministic for a seed
+        const kingRnd = rng.next();
+        let chosenKingSteps = kingStepsAll;
+        if (kingRnd < 0.10) {
+            // 10%: orthogonal-only king (rook-like single-step)
+            chosenKingSteps = [ [1,0], [-1,0], [0,1], [0,-1] ];
+        } else if (kingRnd < 0.20) {
+            // 10%: diagonal-only king (bishop-like single-step)
+            chosenKingSteps = [ [1,1], [1,-1], [-1,1], [-1,-1] ];
+        }
+
+        for (const step of chosenKingSteps) {
             // Each king-like move is distance 1, no jump
             royalMoves.push(new Move(step, null, 1, 'prohibited', false));
         }
@@ -666,6 +679,32 @@ class PieceGenerator {
 
         // Note: Do NOT generate a separate rook clone here. The board placement logic
         // will duplicate the rook on the back rank. We only want one generated rook type.
+        // Ensure at least one knight-like jumping move exists among the
+        // non-royal pieces (indices 1..4). If none found, add a classic
+        // knight jump to the trickster (or fallback to the first non-royal).
+        let hasKnight = false;
+        for (let i = 1; i <= 4; i++) {
+            const p = pieces[i];
+            if (!p) continue;
+            for (const m of p.moves) {
+                if (m.jump === 'required') {
+                    const dx = Math.abs(m.step[0]);
+                    const dy = Math.abs(m.step[1]);
+                    if ((dx === 2 && dy === 1) || (dx === 1 && dy === 2)) {
+                        hasKnight = true;
+                        break;
+                    }
+                }
+            }
+            if (hasKnight) break;
+        }
+
+        if (!hasKnight) {
+            const target = typeof trickster !== 'undefined' && trickster ? trickster : pieces[1];
+            if (target) {
+                target.moves.push(new Move([2, 1], '4way', 1, 'required', false));
+            }
+        }
 
         // Generate standard chess pawn
         const pawnMoves = [
@@ -825,19 +864,32 @@ class PieceGenerator {
             // Straight moves: orthogonal (dx=0 or dy=0) or diagonal (dx=dy)
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
             const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
-            // Orthogonal moves must slide, only diagonal/knight moves can jump
-            const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
-            
-            // Jump moves always distance 1, slide moves can be unlimited or limited
-            // Royal pieces always get distance 1
+            // Orthogonal moves must slide, only diagonal/knight moves can normally jump
+            let jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
+
+            // Determine distance with a few rare variants:
+            // - Knights (jump required) usually have distance 1, but rarely
+            //   we allow a non-jumping distance-2 variant (turning a knight-like
+            //   step into a short sliding move).
+            // - Slide moves normally are either unlimited (-1) or distance 1;
+            //   very rarely allow distance 2 as an extra uncommon case.
             let distance;
             if (isRoyal) {
                 distance = 1;
             } else if (jump === 'required') {
-                distance = 1;
+                if (random() < 0.05) {
+                    // 5% chance: convert a jumping knight-like move into a short slide
+                    // of distance 2 (and mark as sliding)
+                    jump = 'prohibited';
+                    distance = 2;
+                } else {
+                    distance = 1;
+                }
             } else {
-                // Slide moves: 50% unlimited, 50% limited
-                distance = random() < 0.5 ? -1 : 1;
+                const r = random();
+                if (r < 0.50) distance = -1;            // 50% unlimited slide
+                else if (r < 0.95) distance = 1;        // 45% short slide
+                else distance = 2;                     // 5% rare distance-2 slide
             }
 
             moves.push(new Move([dx, dy], symmetry, distance, jump, requiresUnmoved));

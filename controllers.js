@@ -87,6 +87,12 @@ class AIGameController extends GameController {
         this.renderer.setPlayerColor(this.playerColor);
         
         super.start(placement);
+        // Start the clock for whoever's turn it is initially
+        if (this.uiManager) {
+            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
+            this.uiManager.startClock(owner);
+            if (owner === 'ai') this.uiManager.setThinking('thinking');
+        }
         
         // Don't clear the message - preserve multiplayer search status
         
@@ -129,6 +135,13 @@ class AIGameController extends GameController {
         }
         
         this.uiManager.updateTurn(this.engine.currentTurn);
+        // Update clock for the next player
+        if (this.uiManager) {
+            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
+            this.uiManager.startClock(owner);
+            if (owner === 'ai') this.uiManager.setThinking('thinking');
+            else this.uiManager.setThinking('');
+        }
         
         // Show check status
             if (this.engine.isInCheck(this.engine.currentTurn)) {
@@ -143,6 +156,7 @@ class AIGameController extends GameController {
                 this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             }
             this.isActive = false;
+            if (this.uiManager) this.uiManager.stopClock();
             // Show end-of-match controls for multiplayer
             if (this.uiManager && this instanceof MultiplayerGameController) {
                 this.uiManager.showEndmatchControls();
@@ -174,6 +188,11 @@ class AIGameController extends GameController {
         if (this.engine.isGameOver() || !this.isActive) return;
         
         setTimeout(async () => {
+            // AI is thinking now
+            if (this.uiManager) {
+                this.uiManager.setThinking('thinking');
+                this.uiManager.startClock('ai');
+            }
             const bestMove = await this.ai.getBestMove(this.engine);
             if (bestMove) {
                 this.engine.makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol);
@@ -185,6 +204,13 @@ class AIGameController extends GameController {
                 
                 this.render();
                 this.uiManager.updateTurn(this.engine.currentTurn);
+                // After AI move, start the player's clock
+                if (this.uiManager) {
+                    const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
+                    this.uiManager.startClock(owner);
+                    if (owner === 'ai') this.uiManager.setThinking('thinking');
+                    else this.uiManager.setThinking('');
+                }
                 
                 // Show check status
                     if (this.engine.isInCheck(this.engine.currentTurn)) {
@@ -218,6 +244,12 @@ class MultiplayerGameController extends GameController {
         this.renderer.setPlayerColor(this.playerColor);
         
         super.start(placement);
+        // Start the clock for whoever's turn it is initially
+        if (this.uiManager) {
+            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
+            this.uiManager.startClock(owner);
+            if (owner !== 'player') this.uiManager.setThinking('');
+        }
     }
 
     handleSquareClick(row, col) {
@@ -258,6 +290,12 @@ class MultiplayerGameController extends GameController {
         }
         
         this.uiManager.updateTurn(this.engine.currentTurn);
+        // Update clock for the next player (local player vs opponent)
+        if (this.uiManager) {
+            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
+            this.uiManager.startClock(owner);
+            this.uiManager.setThinking('');
+        }
         
         // Send move to server
         this.multiplayerClient.sendMove({
@@ -280,6 +318,7 @@ class MultiplayerGameController extends GameController {
                 this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             }
             this.isActive = false;
+            if (this.uiManager) this.uiManager.stopClock();
             return;
         }
     }
@@ -309,6 +348,11 @@ class MultiplayerGameController extends GameController {
         
         this.render();
         this.uiManager.updateTurn(this.engine.currentTurn);
+        if (this.uiManager) {
+            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
+            this.uiManager.startClock(owner);
+            this.uiManager.setThinking('');
+        }
         
         // Show check status
         if (this.engine.isInCheck(this.engine.currentTurn)) {
@@ -326,9 +370,7 @@ class MultiplayerGameController extends GameController {
             if (this.uiManager && this instanceof MultiplayerGameController) {
                 this.uiManager.showEndmatchControls();
             }
-            if (this.uiManager && this instanceof MultiplayerGameController) {
-                this.uiManager.showEndmatchControls();
-            }
+            if (this.uiManager) this.uiManager.stopClock();
         }
     }
 }

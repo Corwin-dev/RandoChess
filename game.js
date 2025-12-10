@@ -60,7 +60,8 @@ class RandoChessApp {
         // Update UI to show we're playing AI
         if (this.uiManager) {
             this.uiManager.setOpponentStatus('🤖');
-            this.uiManager.showSearchButton();
+            this.uiManager.showCancelButton();
+
         }
     }
 
@@ -69,7 +70,8 @@ class RandoChessApp {
         if (this.uiManager) {
             // Indicate we're showing an AI locally but searching for a human (emoji-only)
             this.uiManager.setOpponentStatus('🤖');
-            this.uiManager.setConnectionStatus('searching');
+            // Game-level status: we're matchmaking/searching (separate from WS connection)
+            this.uiManager.setGameStatus('searching');
             // Turn the search control into a cancel control while queued
             this.uiManager.showCancelButton();
             // Show small thinking indicator for local AI play
@@ -92,7 +94,8 @@ class RandoChessApp {
             this.multiplayerClient.disconnect();
         }
         if (this.uiManager) {
-            this.uiManager.setConnectionStatus('idle');
+            // Game-level idle state
+            this.uiManager.setGameStatus('idle');
             this.uiManager.setOpponentStatus('🤖');
             this.uiManager.showSearchButton();
             this.uiManager.setThinking('idle');
@@ -103,6 +106,14 @@ class RandoChessApp {
     }
 
     setupMultiplayerCallbacks() {
+        // Wire low-level ws lifecycle to UI
+        this.multiplayerClient.onOpen = () => {
+            if (this.uiManager) this.uiManager.setConnectionStatus('connected');
+        };
+        this.multiplayerClient.onClose = () => {
+            if (this.uiManager) this.uiManager.setConnectionStatus('disconnected');
+        };
+
         this.multiplayerClient.onMatchFound = (color, pieces, placement) => {
             console.log('👤', color);
             
@@ -135,6 +146,7 @@ class RandoChessApp {
             // Show that opponent is human and what color they are
             if (this.uiManager) {
                 this.uiManager.setOpponentStatus(`👤`);
+                this.uiManager.setConnectionStatus('connected');
                 this.uiManager.hideSearchButton();
                 // Hide any end-of-match controls (we're in a fresh match)
                 if (this.uiManager.hideEndmatchControls) this.uiManager.hideEndmatchControls();
@@ -177,13 +189,16 @@ class RandoChessApp {
             });
         }
         
-        this.multiplayerClient.onOpponentLeft = () => {
+        this.multiplayerClient.onOpponentLeft = (data) => {
             // Clear any lingering permanent status (e.g. 'Searching...') before showing this
             this.uiManager.clearMessage();
             this.uiManager.showMessage('👤❌➡️🤖', 3000);
             // Update opponent status immediately so it's obvious
             if (this.uiManager) {
                 this.uiManager.setOpponentStatus('🤖');
+                this.uiManager.setConnectionStatus('disconnected');
+                // Game is no longer in a matched state
+                this.uiManager.setGameStatus('idle');
             }
             setTimeout(() => {
                 this.startAIGame();
@@ -196,7 +211,32 @@ class RandoChessApp {
         };
         
         this.multiplayerClient.onMessage = (message) => {
+            // Map server shorthand to connection status where appropriate
+            if (!this.uiManager) return;
+            if (typeof message === 'string') {
+                // common tokens: '⏳' (waiting), '🔌❌' (disconnected), etc.
+                if (message.includes('⏳') || message.includes('🔍')) {
+                    // These are game-level status hints (matchmaking / waiting)
+                    this.uiManager.setGameStatus('searching');
+                    this.uiManager.showMessage(message, 2000);
+                    return;
+                }
+                if (message.includes('🔌❌') || message.includes('❌')) {
+                    this.uiManager.setConnectionStatus('disconnected');
+                    this.uiManager.showMessage(message, 2000);
+                    return;
+                }
+            }
             this.uiManager.showMessage(message, 3000);
+        };
+
+        this.multiplayerClient.onLeftQueue = () => {
+            if (this.uiManager) {
+                // Left matchmaking queue — update game-level status
+                this.uiManager.setGameStatus('idle');
+                this.uiManager.showMessage('⏹️', 1500);
+                this.uiManager.showSearchButton();
+            }
         };
     }
 }

@@ -9,11 +9,15 @@ class MultiplayerClient {
         this.isConnected = false;
         this.pieces = null;
         this.placement = null;
+        // Lifecycle callbacks
+        this.onOpen = null; // () => void
+        this.onClose = null; // () => void
         
         // Callbacks
         this.onMatchFound = null; // (color, pieces, placement) => void
         this.onMove = null; // (move) => void
         this.onOpponentLeft = null; // () => void
+        this.onLeftQueue = null; // () => void
         this.onMessage = null; // (message) => void
         this.onRematchStatus = null; // (mySelection, opponentSelection) => void
     }
@@ -34,6 +38,7 @@ class MultiplayerClient {
         this.ws.onopen = () => {
             console.log('Connected to server');
             this.isConnected = true;
+            if (this.onOpen) this.onOpen();
             
             // Send pieces to server and join queue
             const serializedPieces = PieceSerializer.serialize(pieces);
@@ -58,6 +63,7 @@ class MultiplayerClient {
         this.ws.onclose = () => {
             console.log('Disconnected from server');
             this.isConnected = false;
+            if (this.onClose) this.onClose();
             if (this.onMessage) {
                 this.onMessage('🔌❌');
             }
@@ -103,7 +109,16 @@ class MultiplayerClient {
                 
             case 'OPPONENT_LEFT':
                 if (this.onOpponentLeft) {
-                    this.onOpponentLeft();
+                    this.onOpponentLeft(data);
+                }
+                // If server indicated opponent left unexpectedly (intentional === false),
+                // ask server to remove us from the queue so we are not requeued automatically.
+                if (data.intentional === false) {
+                    try {
+                        this.ws.send(JSON.stringify({ type: 'LEAVE_QUEUE' }));
+                    } catch (e) {
+                        console.warn('Failed to request LEAVE_QUEUE', e);
+                    }
                 }
                 if (this.onMessage) {
                     this.onMessage('👤❌');
@@ -115,6 +130,10 @@ class MultiplayerClient {
                 if (this.onRematchStatus) {
                     this.onRematchStatus(data.mySelection || null, data.opponentSelection || null);
                 }
+                break;
+
+            case 'LEFT_QUEUE':
+                if (this.onLeftQueue) this.onLeftQueue();
                 break;
 
             case 'REMATCH_START': {
