@@ -161,6 +161,11 @@ class ChessEngine {
                     const newRow = fromRow + adjustedDy * dist;
                     const newCol = fromCol + dx * dist;
 
+                    // Guard against invalid numeric steps (NaN/Infinity) which can
+                    // occur if a move's step values are malformed. If encountered,
+                    // stop scanning this direction to avoid indexing this.board[NaN].
+                    if (!Number.isFinite(newRow) || !Number.isFinite(newCol)) break;
+
                     if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) break;
 
                     // If this is the target square, determine if the move can attack it
@@ -252,6 +257,8 @@ class ChessEngine {
                 for (let dist = 1; dist <= maxDist; dist++) {
                     const newRow = row + adjustedDy * dist;
                     const newCol = col + dx * dist;
+
+                    if (!Number.isFinite(newRow) || !Number.isFinite(newCol)) break;
 
                     if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) break;
 
@@ -485,6 +492,8 @@ class ChessEngine {
                     const newRow = row + adjustedDy * dist;
                     const newCol = col + dx * dist;
 
+                    if (!Number.isFinite(newRow) || !Number.isFinite(newCol)) break;
+
                     if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) break;
 
                     const key = `${newRow},${newCol}`;
@@ -540,6 +549,10 @@ class ChessEngine {
                 for (let dist = 1; dist <= maxDist; dist++) {
                     const newRow = row + adjustedDy * dist;
                     const newCol = col + dx * dist;
+
+                    // Guard against invalid numeric steps when generating unrestricted
+                    // patterns. If encountered, stop this direction.
+                    if (!Number.isFinite(newRow) || !Number.isFinite(newCol)) break;
 
                     // No boundary checking - allow extended grid
                     const key = `${newRow},${newCol}`;
@@ -668,7 +681,9 @@ class ChessEngine {
                 } else {
                     // Fallback: generate now using seeded RNG
                     const rng = this.seed !== null ? new SeededRandom(this.seed + toRow * 8 + toCol) : null;
-                    upgradedMoves = PieceGenerator.generateUpgradeMoves(cellData.piece.moves, rng || {next: Math.random});
+                    const realRng = rng || {next: Math.random};
+                    const bonusRange = PieceGenerator.getUpgradeBonusRange(cellData.piece.moves);
+                    upgradedMoves = PieceGenerator.generateUpgradeMoves(cellData.piece.moves, realRng, bonusRange);
                 }
 
                 // Create new upgraded piece

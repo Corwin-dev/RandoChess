@@ -91,25 +91,34 @@ class PieceGenerator {
     
     // Analyze if a piece has only forward or only vertical movement
     static isDirectionallyRestricted(moves) {
-        // Get all possible steps from all moves
-        const allSteps = [];
+        // Use base move steps (ignore symmetry expansions) so promotion decisions
+        // depend on the intended step directions rather than symmetric derivatives.
+        const baseSteps = [];
         for (const move of moves) {
             // Skip capture-only moves for this analysis
             if (move.capture === 'required') continue;
-            allSteps.push(...move.getSteps());
+            // Use the move's declared step only (do not expand symmetry)
+            baseSteps.push(move.step);
         }
-        
-        if (allSteps.length === 0) return false;
-        
-        // Check if all steps are forward-only (dy > 0 for all, or dy < 0 for all)
-        const allForward = allSteps.every(([dx, dy]) => dy > 0);
-        const allBackward = allSteps.every(([dx, dy]) => dy < 0);
-        const onlyForwardMovement = allForward || allBackward;
-        
-        // Check if all steps are vertical-only (dx === 0)
-        const onlyVertical = allSteps.every(([dx, dy]) => dx === 0);
-        
-        return onlyForwardMovement || onlyVertical;
+
+        if (baseSteps.length === 0) return false;
+
+        const hasBackward = baseSteps.some(([dx, dy]) => dy < 0);
+        const hasForward = baseSteps.some(([dx, dy]) => dy > 0);
+        const onlyVertical = baseSteps.every(([dx, dy]) => dx === 0);
+
+        // Also ensure the symmetry-expanded steps do not introduce backward movement.
+        const expandedSteps = [];
+        for (const m of moves) {
+            if (m.capture === 'required') continue;
+            expandedSteps.push(...m.getSteps());
+        }
+        const expandedHasBackward = expandedSteps.some(([dx, dy]) => dy < 0);
+
+        // Directionally restricted if it has no backward movement in base steps AND
+        // no backward movement when symmetry is applied, and either can move forward
+        // or is vertical-only.
+        return (!hasBackward && !expandedHasBackward && (hasForward || onlyVertical));
     }
     
     // Determine the farthest rank a piece can reach
@@ -135,27 +144,76 @@ class PieceGenerator {
     }
     
     // Generate additional moves for move-upgrade promotion
-    static generateUpgradeMoves(originalMoves, rng) {
+    static getUpgradeBonusRange(moves) {
+        // Determine bonus move range based on forward-movement difficulty.
+        // Use base move steps (ignore symmetry) to determine forward/backward/horizontal.
+        const baseInfo = [];
+        for (const m of moves) {
+            if (m.capture === 'required') continue;
+            const [dx, dy] = m.step;
+            baseInfo.push({dx, dy, move: m});
+        }
+
+        const hasAnyForward = baseInfo.some(({dy}) => dy > 0);
+        const hasAnyBackward = baseInfo.some(({dy}) => dy < 0);
+
+        // Also ensure symmetry-expanded moves do not have backward movement
+        const expanded = [];
+        for (const m of moves) {
+            if (m.capture === 'required') continue;
+            expanded.push(...m.getSteps());
+        }
+        const expandedHasBackward = expanded.some(([dx, dy]) => dy < 0);
+
+        // Only apply scaling when piece has no backward movement (base) and no expanded backward
+        // and has some forward movement
+        if (!hasAnyForward || hasAnyBackward || expandedHasBackward) return null;
+
+        // Infinite forward movement if any forward move has unlimited distance and isn't a jump
+        const hasInfiniteForward = baseInfo.some(({dy, move}) => dy > 0 && move.distance === -1 && move.jump !== 'required');
+
+        // Double-step forward if any forward move has distance === 2
+        const hasDoubleForward = baseInfo.some(({dy, move}) => dy > 0 && move.distance === 2);
+
+        // Determine base range
+        let baseRange;
+        if (hasInfiniteForward) baseRange = [0, 1];
+        else if (hasDoubleForward) baseRange = [1, 2];
+        else baseRange = [2, 3];
+
+        // If piece has horizontal movement (and no backward movement — already ensured above),
+        // subtract one bonus move from the range (minimum 0).
+        const hasHorizontal = baseInfo.some(({dx, dy}) => dx !== 0 && dy === 0);
+        if (hasHorizontal) {
+            const adjMin = Math.max(0, baseRange[0] - 1);
+            const adjMax = Math.max(0, baseRange[1] - 1);
+            return [adjMin, adjMax];
+        }
+
+        return baseRange;
+    }
+
+    static generateUpgradeMoves(originalMoves, rng, bonusRange = null) {
         const newMoves = [...originalMoves];
         let attemptsLeft = 10;
-        
+
         // Keep adding moves until piece is no longer directionally restricted
         while (this.isDirectionallyRestricted(newMoves) && attemptsLeft > 0) {
             attemptsLeft--;
-            
+
             // Generate a move that breaks the restriction
             const allSteps = [];
             for (const move of newMoves) {
                 if (move.capture === 'required') continue;
                 allSteps.push(...move.getSteps());
             }
-            
+
             const onlyVertical = allSteps.every(([dx, dy]) => dx === 0);
             const allForward = allSteps.every(([dx, dy]) => dy > 0);
             const allBackward = allSteps.every(([dx, dy]) => dy < 0);
-            
+
             let dx, dy;
-            
+
             if (onlyVertical) {
                 // Add horizontal or diagonal movement
                 dx = [1, 1, 2][Math.floor(rng.next() * 3)];
@@ -169,52 +227,62 @@ class PieceGenerator {
                 dx = [0, 1, 1][Math.floor(rng.next() * 3)];
                 dy = [1, 1, 2][Math.floor(rng.next() * 3)];
             }
-            
+
             const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
             const orthogonalJump = isOrthogonal && (dx >= 2 || dy >= 2);
             const diagonalJump = (dx === dy) && dx >= 2;
-            
+
             // Skip orthogonal jumps (e.g., [0,2], [2,0]) and diagonal jumps (e.g., [2,2])
             if (orthogonalJump || diagonalJump) {
                 attemptsLeft++; // Don't count this as a failed attempt
                 continue;
             }
-            
+
             const symmetry = this.symmetries[Math.floor(rng.next() * this.symmetries.length)];
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
             // Orthogonal moves must slide, only diagonal/knight moves can jump
             const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
             const distance = jump === 'required' ? 1 : (rng.next() < 0.5 ? -1 : 1);
-            
+
             newMoves.push(new Move([dx, dy], symmetry, distance, jump, false));
         }
-        
-        // Add one bonus move for the upgrade
-        const stepOptions = [0, 0, 0, 1, 1];
-        let dx, dy;
-        do {
-            dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
-            dy = stepOptions[Math.floor(rng.next() * stepOptions.length)];
-        } while (dx === 0 && dy === 0);
-        
-        const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
-        const orthogonalJump = isOrthogonal && (dx >= 2 || dy >= 2);
-        const diagonalJump = (dx === dy) && dx >= 2;
-        
-        // If this would be an orthogonal or diagonal jump, change to distance 1
-        if (orthogonalJump || diagonalJump) {
-            if (dx >= 2) dx = 1;
-            if (dy >= 2) dy = 1;
+
+        // Determine bonus moves count
+        let bonusMin = 1, bonusMax = 1;
+        if (Array.isArray(bonusRange) && bonusRange.length === 2) {
+            bonusMin = bonusRange[0];
+            bonusMax = bonusRange[1];
         }
-        
-        const symmetry = this.symmetries[Math.floor(rng.next() * this.symmetries.length)];
-        const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
-        // Orthogonal moves must slide, only diagonal/knight moves can jump
-        const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
-        const distance = jump === 'required' ? 1 : (rng.next() < 0.5 ? -1 : 1);
-        
-        newMoves.push(new Move([dx, dy], symmetry, distance, jump, false));
-        
+
+        const bonusCount = Math.floor(rng.next() * (bonusMax - bonusMin + 1)) + bonusMin;
+
+        const stepOptions = [0, 0, 0, 1, 1];
+        for (let b = 0; b < bonusCount; b++) {
+            let dx, dy;
+            do {
+                dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
+                dy = stepOptions[Math.floor(rng.next() * stepOptions.length)];
+            } while (dx === 0 && dy === 0);
+
+            const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
+            const orthogonalJump = isOrthogonal && (dx >= 2 || dy >= 2);
+            const diagonalJump = (dx === dy) && dx >= 2;
+
+            // If this would be an orthogonal or diagonal jump, change to distance 1
+            if (orthogonalJump || diagonalJump) {
+                if (dx >= 2) dx = 1;
+                if (dy >= 2) dy = 1;
+            }
+
+            const symmetry = this.symmetries[Math.floor(rng.next() * this.symmetries.length)];
+            const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
+            // Orthogonal moves must slide, only diagonal/knight moves can jump
+            const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
+            const distance = jump === 'required' ? 1 : (rng.next() < 0.5 ? -1 : 1);
+
+            newMoves.push(new Move([dx, dy], symmetry, distance, jump, false));
+        }
+
         return newMoves;
     }
     
@@ -306,7 +374,8 @@ class PieceGenerator {
             if (this.isDirectionallyRestricted(moves)) {
                 promotionRank = this.getFarthestReachableRank(moves);
                 promotionType = 'move-upgrade';
-                upgradeMoves = this.generateUpgradeMoves(moves, rng);
+                const bonusRange = this.getUpgradeBonusRange(moves);
+                upgradeMoves = this.generateUpgradeMoves(moves, rng, bonusRange);
             }
 
             return new Piece(symbol, moves, false, [], [], promotionRank, promotionType, upgradeMoves);
@@ -376,6 +445,18 @@ class PieceGenerator {
                         }
                     }
 
+                    // Recompute promotion/upgrade status in case our enforced changes affected directionality
+                    if (this.isDirectionallyRestricted(slider.moves)) {
+                        slider.promotionRank = this.getFarthestReachableRank(slider.moves);
+                        slider.promotionType = 'move-upgrade';
+                        const bonusRange = this.getUpgradeBonusRange(slider.moves);
+                        slider.upgradeMoves = this.generateUpgradeMoves(slider.moves, rng, bonusRange);
+                    } else {
+                        slider.promotionRank = -1;
+                        slider.promotionType = null;
+                        slider.upgradeMoves = [];
+                    }
+
                     usedSignatures.add(sig);
                     pieces.push(slider);
                     break;
@@ -396,56 +477,190 @@ class PieceGenerator {
                     if (idx >= 0) slider.moves[idx].symmetry = '4way';
                     else slider.moves[0].symmetry = '4way';
                 }
+                // Recompute promotion/upgrade status for fallback slider
+                if (this.isDirectionallyRestricted(slider.moves)) {
+                    slider.promotionRank = this.getFarthestReachableRank(slider.moves);
+                    slider.promotionType = 'move-upgrade';
+                    const bonusRange = this.getUpgradeBonusRange(slider.moves);
+                    slider.upgradeMoves = this.generateUpgradeMoves(slider.moves, rng, bonusRange);
+                } else {
+                    slider.promotionRank = -1;
+                    slider.promotionType = null;
+                    slider.upgradeMoves = [];
+                }
+
                 pieces.push(slider);
                 usedSignatures.add(pieceSignature(slider));
             }
         }
 
-        // Minor 1 (bishop/knight position) - n moves
-        let minor1;
+        // Trickster (formerly Minor 1) - n moves
+        // Requirements: must have at least one jumping move and must NOT have all four cardinal directions
+        let trickster;
         {
             let attempts = 0;
             do {
                 const moves = this.generateRandomMoves(n, false, rng);
                 const candidate = createNonRoyal(moves);
+
+                // Enforce Trickster constraints BEFORE computing signature
+                // Ensure at least one jumping move
+                const hasJump = candidate.moves.some(m => m.jump === 'required');
+                if (!hasJump) {
+                    // Add a knight-like jump move to guarantee a jumping ability
+                    candidate.moves.push(new Move([2, 1], '4way', 1, 'required', false));
+                }
+
+                // Ensure the piece does NOT have all four cardinal directions
+                const allSteps = [];
+                for (const m of candidate.moves) {
+                    if (m.capture === 'required') continue;
+                    allSteps.push(...m.getSteps());
+                }
+                const hasE = allSteps.some(([dx, dy]) => dx === 1 && dy === 0);
+                const hasW = allSteps.some(([dx, dy]) => dx === -1 && dy === 0);
+                const hasN = allSteps.some(([dx, dy]) => dx === 0 && dy === 1);
+                const hasS = allSteps.some(([dx, dy]) => dx === 0 && dy === -1);
+
+                if (hasE && hasW && hasN && hasS) {
+                    // Break the full-cardinal set by converting one cardinal move into a diagonal
+                    // Find first move that yields a cardinal direction and modify it
+                    for (const m of candidate.moves) {
+                        const steps = m.getSteps();
+                        const producesCardinal = steps.some(([dx, dy]) => (dx === 1 && dy === 0) || (dx === -1 && dy === 0) || (dx === 0 && dy === 1) || (dx === 0 && dy === -1));
+                        if (producesCardinal) {
+                            // Change this move to a diagonal slide to remove one cardinal
+                            m.step = [1, 1];
+                            m.jump = 'prohibited';
+                            m.distance = m.distance === -1 ? -1 : 1;
+                            m.symmetry = 'Horizontal';
+                            break;
+                        }
+                    }
+                }
+
+                // Recompute promotion/upgrade status in case our enforced changes affected directionality
+                if (this.isDirectionallyRestricted(candidate.moves)) {
+                    candidate.promotionRank = this.getFarthestReachableRank(candidate.moves);
+                    candidate.promotionType = 'move-upgrade';
+                    const bonusRange = this.getUpgradeBonusRange(candidate.moves);
+                    candidate.upgradeMoves = this.generateUpgradeMoves(candidate.moves, rng, bonusRange);
+                } else {
+                    candidate.promotionRank = -1;
+                    candidate.promotionType = null;
+                    candidate.upgradeMoves = [];
+                }
+
                 const sig = pieceSignature(candidate);
                 if (!usedSignatures.has(sig)) {
-                    minor1 = candidate;
+                    trickster = candidate;
                     usedSignatures.add(sig);
-                    pieces.push(minor1);
+                    pieces.push(trickster);
                     break;
                 }
                 attempts++;
             } while (attempts < 30);
-            if (!minor1) {
+            if (!trickster) {
                 const moves = this.generateRandomMoves(n, false, rng);
-                minor1 = createNonRoyal(moves);
-                pieces.push(minor1);
-                usedSignatures.add(pieceSignature(minor1));
+                trickster = createNonRoyal(moves);
+                // Ensure trickster constraints on fallback as well
+                if (!trickster.moves.some(m => m.jump === 'required')) {
+                    trickster.moves.push(new Move([2, 1], '4way', 1, 'required', false));
+                }
+                // Remove full-cardinal if present
+                const allSteps = [];
+                for (const m of trickster.moves) {
+                    if (m.capture === 'required') continue;
+                    allSteps.push(...m.getSteps());
+                }
+                const hasE = allSteps.some(([dx, dy]) => dx === 1 && dy === 0);
+                const hasW = allSteps.some(([dx, dy]) => dx === -1 && dy === 0);
+                const hasN = allSteps.some(([dx, dy]) => dx === 0 && dy === 1);
+                const hasS = allSteps.some(([dx, dy]) => dx === 0 && dy === -1);
+                if (hasE && hasW && hasN && hasS) {
+                    for (const m of trickster.moves) {
+                        const steps = m.getSteps();
+                        const producesCardinal = steps.some(([dx, dy]) => (dx === 1 && dy === 0) || (dx === -1 && dy === 0) || (dx === 0 && dy === 1) || (dx === 0 && dy === -1));
+                        if (producesCardinal) {
+                            m.step = [1, 1];
+                            m.jump = 'prohibited';
+                            m.distance = m.distance === -1 ? -1 : 1;
+                            m.symmetry = 'Horizontal';
+                            break;
+                        }
+                    }
+                }
+                // Recompute promotion/upgrade for fallback trickster
+                if (this.isDirectionallyRestricted(trickster.moves)) {
+                    trickster.promotionRank = this.getFarthestReachableRank(trickster.moves);
+                    trickster.promotionType = 'move-upgrade';
+                    const bonusRange = this.getUpgradeBonusRange(trickster.moves);
+                    trickster.upgradeMoves = this.generateUpgradeMoves(trickster.moves, rng, bonusRange);
+                } else {
+                    trickster.promotionRank = -1;
+                    trickster.promotionType = null;
+                    trickster.upgradeMoves = [];
+                }
+
+                pieces.push(trickster);
+                usedSignatures.add(pieceSignature(trickster));
             }
         }
 
-        // Minor 2 (bishop/knight position) - n moves
-        let minor2;
+        // Flower (formerly Minor 2) - n + 2 moves
+        // Requirements: has 2 extra moves compared to minor baseline, and ALL moves use Horizontal symmetry
+        let flower;
         {
             let attempts = 0;
             do {
-                const moves = this.generateRandomMoves(n, false, rng);
+                const moves = this.generateRandomMoves(n + 2, false, rng);
                 const candidate = createNonRoyal(moves);
+
+                // Force Horizontal symmetry on all moves for Flower
+                for (const m of candidate.moves) {
+                    m.symmetry = 'Horizontal';
+                }
+
+                // Recompute promotion/upgrade status in case forcing Horizontal symmetry changed directionality
+                if (this.isDirectionallyRestricted(candidate.moves)) {
+                    candidate.promotionRank = this.getFarthestReachableRank(candidate.moves);
+                    candidate.promotionType = 'move-upgrade';
+                    const bonusRange = this.getUpgradeBonusRange(candidate.moves);
+                    candidate.upgradeMoves = this.generateUpgradeMoves(candidate.moves, rng, bonusRange);
+                } else {
+                    candidate.promotionRank = -1;
+                    candidate.promotionType = null;
+                    candidate.upgradeMoves = [];
+                }
+
                 const sig = pieceSignature(candidate);
                 if (!usedSignatures.has(sig)) {
-                    minor2 = candidate;
+                    flower = candidate;
                     usedSignatures.add(sig);
-                    pieces.push(minor2);
+                    pieces.push(flower);
                     break;
                 }
                 attempts++;
             } while (attempts < 30);
-            if (!minor2) {
-                const moves = this.generateRandomMoves(n, false, rng);
-                minor2 = createNonRoyal(moves);
-                pieces.push(minor2);
-                usedSignatures.add(pieceSignature(minor2));
+            if (!flower) {
+                const moves = this.generateRandomMoves(n + 2, false, rng);
+                flower = createNonRoyal(moves);
+                for (const m of flower.moves) {
+                    m.symmetry = 'Horizontal';
+                }
+                // Recompute promotion/upgrade for fallback flower
+                if (this.isDirectionallyRestricted(flower.moves)) {
+                    flower.promotionRank = this.getFarthestReachableRank(flower.moves);
+                    flower.promotionType = 'move-upgrade';
+                    const bonusRange = this.getUpgradeBonusRange(flower.moves);
+                    flower.upgradeMoves = this.generateUpgradeMoves(flower.moves, rng, bonusRange);
+                } else {
+                    flower.promotionRank = -1;
+                    flower.promotionType = null;
+                    flower.upgradeMoves = [];
+                }
+                pieces.push(flower);
+                usedSignatures.add(pieceSignature(flower));
             }
         }
 
@@ -659,7 +874,7 @@ class PieceGenerator {
     }
 
     // Generate a canvas icon showing the movement pattern of a piece on a 7x7 grid
-    static createMovementPatternIcon(piece, size = 80, color = 'white', playerPerspective = 'white') {
+    static createMovementPatternIcon(piece, size = 80, color = 'white', playerPerspective = 'white', isPromotionSquare = false) {
         const gridSize = 7;
         const borderCells = 0.5; // Half-cell transparent border on each side
         const totalGridSize = gridSize + (borderCells * 2); // 8x8 total with border
@@ -782,6 +997,15 @@ class PieceGenerator {
                         grad.addColorStop(0.25, '#FFFF33'); // very bright yellow
                         grad.addColorStop(0.6, '#FFD700'); // gold
                         grad.addColorStop(1, '#B8860B'); // dark goldenrod (shadow)
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(px, py, width, height);
+                    } else if (isPromotionSquare) {
+                        // Silver gradient for promotion/upgrade-ready pieces
+                        const grad = ctx.createLinearGradient(px, py, px + width, py + height);
+                        grad.addColorStop(0, '#f0f0f4'); // pale silver highlight
+                        grad.addColorStop(0.25, '#dcdde1');
+                        grad.addColorStop(0.6, '#c0c0c8');
+                        grad.addColorStop(1, '#808090'); // darker silver shadow
                         ctx.fillStyle = grad;
                         ctx.fillRect(px, py, width, height);
                     } else {

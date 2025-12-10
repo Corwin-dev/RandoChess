@@ -161,7 +161,11 @@ class BoardRenderer {
                 if (cellData) {
                     // Create canvas icon showing movement pattern (use 80 which divides evenly by 8)
                     // Pass player perspective so pieces flip when viewing as black
-                    const pieceIcon = PieceGenerator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor);
+                    // Determine if this piece is on its promotion square (automatic move-upgrade promotions)
+                    const isPromotionSquare = (cellData.piece.promotionType === 'move-upgrade') &&
+                        ((cellData.color === 'white' && row === 0) || (cellData.color === 'black' && row === 7));
+
+                    const pieceIcon = PieceGenerator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor, isPromotionSquare);
                     pieceIcon.className = `piece ${cellData.color}`;
                     if (cellData.piece.royal) {
                         pieceIcon.classList.add('royal');
@@ -339,7 +343,7 @@ class UIManager {
             choice.style.padding = '6px';
 
             // Try to generate and add the movement pattern icon
-            try {
+                try {
                 const icon = PieceGenerator.createMovementPatternIcon(piece, 80);
                 icon.style.display = 'block';
                 icon.style.width = '80px';
