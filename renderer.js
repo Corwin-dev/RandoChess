@@ -159,13 +159,14 @@ class BoardRenderer {
 
                 const cellData = board[row][col];
                 if (cellData) {
-                    const piece = document.createElement('span');
-                    piece.className = `piece ${cellData.color}`;
+                    // Create canvas icon showing movement pattern (use 80 which divides evenly by 8)
+                    // Pass player perspective so pieces flip when viewing as black
+                    const pieceIcon = PieceGenerator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor);
+                    pieceIcon.className = `piece ${cellData.color}`;
                     if (cellData.piece.royal) {
-                        piece.classList.add('royal');
+                        pieceIcon.classList.add('royal');
                     }
-                    piece.textContent = cellData.piece.name;
-                    square.appendChild(piece);
+                    square.appendChild(pieceIcon);
                 }
 
                 // Highlight selected square
@@ -269,12 +270,35 @@ class UIManager {
         // Clear previous choices
         this.promotionChoices.innerHTML = '';
         
+        console.log('Showing promotion dialog for pieces:', pieces);
+        
         // Create choice buttons for each piece
         pieces.forEach((piece, index) => {
             const choice = document.createElement('div');
             choice.className = `promotion-choice ${color}`;
-            choice.textContent = piece.name;
             choice.title = `Promote to ${piece.name}`;
+            
+            // Try to generate and add the movement pattern icon
+            try {
+                console.log('Creating icon for piece:', piece.name);
+                const icon = PieceGenerator.createMovementPatternIcon(piece, 80);
+                console.log('Icon created:', icon);
+                icon.style.display = 'block';
+                icon.style.width = '80px';
+                icon.style.height = '80px';
+                choice.appendChild(icon);
+                
+                // Add piece name below the icon
+                const nameLabel = document.createElement('div');
+                nameLabel.className = 'promotion-piece-name';
+                nameLabel.textContent = piece.name;
+                choice.appendChild(nameLabel);
+            } catch (error) {
+                console.error('Error creating icon:', error);
+                // Fallback to text-only display
+                choice.textContent = piece.name;
+            }
+            
             choice.addEventListener('click', () => {
                 this.hidePromotionDialog();
                 onChoose(index);

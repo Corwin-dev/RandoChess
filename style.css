@@ -246,11 +246,11 @@ footer a:hover {
 }
 
 .square.light {
-    background: #f0d9b5;
+    background: #a6a6a6;
 }
 
 .square.dark {
-    background: #b58863;
+    background: #595959;
 }
 
 .square.selected {
@@ -287,22 +287,13 @@ footer a:hover {
 }
 
 .piece {
-    font-size: 2.5em;
     user-select: none;
     pointer-events: none;
-}
-
-.piece.white {
-    color: #ffffff;
-    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
-}
-
-.piece.black {
-    color: #000000;
-}
-
-.piece.royal {
-    filter: drop-shadow(0 0 5px gold);
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
 }
 
 #message {
@@ -354,36 +345,36 @@ footer a:hover {
 }
 
 .promotion-choice {
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 120px;
     border: 3px solid #667eea;
     border-radius: 10px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 3em;
     cursor: pointer;
     transition: all 0.2s;
     background: #f8f9fa;
+    padding: 5px;
+    gap: 5px;
+}
+
+.promotion-piece-name {
+    font-size: 0.8em;
+    font-weight: bold;
+    text-align: center;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 .promotion-choice:hover {
-    transform: scale(1.1);
+    transform: scale(1.05);
     background: #e9ecef;
     box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-}
-
-.promotion-choice.white {
-    color: #ffffff;
-    text-shadow: 
-        -1px -1px 0 #000,
-        1px -1px 0 #000,
-        -1px 1px 0 #000,
-        1px 1px 0 #000;
-}
-
-.promotion-choice.black {
-    color: #000000;
 }
 
 @media (max-width: 700px) {

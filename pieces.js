@@ -162,9 +162,20 @@ class PieceGenerator {
                 dy = [1, 1, 2][Math.floor(rng.next() * 3)];
             }
             
+            const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
+            const orthogonalJump = isOrthogonal && (dx >= 2 || dy >= 2);
+            const diagonalJump = (dx === dy) && dx >= 2;
+            
+            // Skip orthogonal jumps (e.g., [0,2], [2,0]) and diagonal jumps (e.g., [2,2])
+            if (orthogonalJump || diagonalJump) {
+                attemptsLeft++; // Don't count this as a failed attempt
+                continue;
+            }
+            
             const symmetry = this.symmetries[Math.floor(rng.next() * this.symmetries.length)];
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
-            const jump = isStraightMove ? 'prohibited' : 'required';
+            // Orthogonal moves must slide, only diagonal/knight moves can jump
+            const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
             const distance = jump === 'required' ? 1 : (rng.next() < 0.5 ? -1 : 1);
             
             newMoves.push(new Move([dx, dy], symmetry, distance, jump, false));
@@ -178,9 +189,20 @@ class PieceGenerator {
             dy = stepOptions[Math.floor(rng.next() * stepOptions.length)];
         } while (dx === 0 && dy === 0);
         
+        const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
+        const orthogonalJump = isOrthogonal && (dx >= 2 || dy >= 2);
+        const diagonalJump = (dx === dy) && dx >= 2;
+        
+        // If this would be an orthogonal or diagonal jump, change to distance 1
+        if (orthogonalJump || diagonalJump) {
+            if (dx >= 2) dx = 1;
+            if (dy >= 2) dy = 1;
+        }
+        
         const symmetry = this.symmetries[Math.floor(rng.next() * this.symmetries.length)];
         const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
-        const jump = isStraightMove ? 'prohibited' : 'required';
+        // Orthogonal moves must slide, only diagonal/knight moves can jump
+        const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
         const distance = jump === 'required' ? 1 : (rng.next() < 0.5 ? -1 : 1);
         
         newMoves.push(new Move([dx, dy], symmetry, distance, jump, false));
@@ -266,7 +288,7 @@ class PieceGenerator {
         let hasForwardMove = false;
         
         for (let i = 0; i < pawnMoveCount; i++) {
-            // Random step with small values preferred (no 2 for pawns)
+            // Random step with small values preferred (no 2+ for orthogonal moves)
             const stepOptions = [0, 1, 1];
             let dx, dy;
             
@@ -287,7 +309,9 @@ class PieceGenerator {
             
             // Determine if this is a straight move (slide) or non-straight move (jump)
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
-            const jump = isStraightMove ? 'prohibited' : 'required';
+            const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
+            // Orthogonal moves must slide, only diagonal/knight moves can jump
+            const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
             
             // Determine capture type
             let capture;
@@ -335,6 +359,12 @@ class PieceGenerator {
                     requiresUnmoved = true; // Only distance 2 requires unmoved
                 } else {
                     distance = 1; // 45% chance of distance 1 (always available)
+                }
+                
+                // If pawn only has one move and it's forward, it can't require unmoved
+                if (pawnMoveCount === 1 && requiresUnmoved) {
+                    requiresUnmoved = false;
+                    distance = 1; // Make it distance 1 so it's always available
                 }
             } else {
                 // Capture moves or both always distance 1
@@ -471,7 +501,10 @@ class PieceGenerator {
             do {
                 dx = stepOptions[Math.floor(random() * stepOptions.length)];
                 dy = stepOptions[Math.floor(random() * stepOptions.length)];
-            } while (dx === 0 && dy === 0);
+            } while (dx === 0 && dy === 0 ||        // Not both zero
+                     (dx === 0 && dy >= 2) ||       // No [0, 2+]
+                     (dy === 0 && dx >= 2) ||       // No [2+, 0]
+                     (dx === dy && dx >= 2));       // No [2+, 2+]
 
             // Royal pieces get 4way symmetry, others random
             const symmetry = isRoyal ? '4way' : this.symmetries[Math.floor(random() * this.symmetries.length)];
@@ -481,7 +514,9 @@ class PieceGenerator {
             // Determine if this is a straight move (slide) or non-straight move (jump)
             // Straight moves: orthogonal (dx=0 or dy=0) or diagonal (dx=dy)
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
-            const jump = isStraightMove ? 'prohibited' : 'required';
+            const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
+            // Orthogonal moves must slide, only diagonal/knight moves can jump
+            const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
             
             // Jump moves always distance 1, slide moves can be unlimited or limited
             // Royal pieces always get distance 1
@@ -506,15 +541,165 @@ class PieceGenerator {
             const dx = stepOptions[Math.floor(random() * stepOptions.length)];
             const dy = stepOptions.filter(v => v !== 0)[Math.floor(random() * stepOptions.filter(v => v !== 0).length)];
             
+            const isOrthogonal = (dx === 0 || dy === 0) && !(dx === 0 && dy === 0);
+            const orthogonalJump = isOrthogonal && (dx >= 2 || dy >= 2);
+            const diagonalJump = (dx === dy) && dx >= 2;
+            
+            // If this would be an orthogonal or diagonal jump, change to distance 1
+            if (orthogonalJump || diagonalJump) {
+                if (dx >= 2) dx = 1;
+                if (dy >= 2) dy = 1;
+            }
+            
             const symmetry = this.symmetries[Math.floor(random() * this.symmetries.length)];
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
-            const jump = isStraightMove ? 'prohibited' : 'required';
+            // Orthogonal moves must slide, only diagonal/knight moves can jump
+            const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
             const distance = jump === 'required' ? 1 : (random() < 0.5 ? -1 : 1);
             
             moves[0] = new Move([dx, dy], symmetry, distance, jump, false);
         }
         
         return moves;
+    }
+
+    // Generate a canvas icon showing the movement pattern of a piece on a 7x7 grid
+    static createMovementPatternIcon(piece, size = 80, color = 'white', playerPerspective = 'white') {
+        const gridSize = 7;
+        const borderCells = 0.5; // Half-cell transparent border on each side
+        const totalGridSize = gridSize + (borderCells * 2); // 8x8 total with border
+        
+        // Ensure size is a perfect multiple for pixel-perfect rendering
+        const adjustedSize = Math.floor(size / totalGridSize) * totalGridSize;
+        const cellSize = adjustedSize / totalGridSize;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = adjustedSize;
+        canvas.height = adjustedSize;
+        const ctx = canvas.getContext('2d');
+        
+        // Disable anti-aliasing for crisp pixels
+        ctx.imageSmoothingEnabled = false;
+        
+        const centerPos = Math.floor(gridSize / 2); // Center at position 3 in 7x7 grid
+        
+        // Create a set of all reachable positions
+        const reachable = new Set();
+        
+        // Simulate all possible moves from the center position
+        for (const move of piece.moves) {
+            // Skip moves that require the piece to be unmoved (like castling)
+            if (move.requiresUnmoved) continue;
+            
+            const steps = move.getSteps();
+            
+            for (const [dx, dy] of steps) {
+                // For each step, calculate all positions within distance
+                const maxDist = move.distance === -1 ? gridSize : move.distance;
+                
+                for (let dist = 1; dist <= maxDist; dist++) {
+                    // Only flip your own pieces when viewing as black
+                    // (flip when player is black AND piece is black, or when player is white AND piece is white)
+                    const shouldFlip = (playerPerspective === 'black' && color === 'black') || 
+                                      (playerPerspective === 'white' && color === 'white');
+                    const flipDy = shouldFlip ? -dy : dy;
+                    const newX = centerPos + (dx * dist);
+                    const newY = centerPos + (flipDy * dist);
+                    
+                    // Check if within grid bounds
+                    if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize) {
+                        reachable.add(`${newX},${newY}`);
+                        
+                        // If this is a sliding move (prohibited jump), continue
+                        // If this is a jumping move (required jump), stop after first
+                        if (move.jump === 'required') {
+                            break;
+                        }
+                    } else {
+                        // Out of bounds, stop sliding in this direction
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Canvas is transparent by default, only draw the reachable squares
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+                // Offset by border when drawing
+                const gridX = x + borderCells;
+                const gridY = y + borderCells;
+                const px = Math.floor(gridX * cellSize);
+                const py = Math.floor(gridY * cellSize);
+                const width = Math.floor((gridX + 1) * cellSize) - px;
+                const height = Math.floor((gridY + 1) * cellSize) - py;
+                
+                // Check if this is a reachable position or the center (for royal gem)
+                const isCenter = (x === centerPos && y === centerPos);
+                const isReachable = reachable.has(`${x},${y}`);
+                
+                if (isReachable) {
+                    // Fill with piece color
+                    ctx.fillStyle = color === 'white' ? '#ffffff' : '#000000';
+                    ctx.fillRect(px, py, width, height);
+                }
+                
+                // Add golden gem in center for royal pieces
+                if (isCenter && piece.royal) {
+                    // Create a faceted gem appearance with gradients
+                    const gemSize = Math.floor(cellSize * 0.85);
+                    const gemOffset = Math.floor((cellSize - gemSize) / 2);
+                    const gemX = px + gemOffset;
+                    const gemY = py + gemOffset;
+                    
+                    // Create radial gradient for shimmer effect
+                    const gradient = ctx.createRadialGradient(
+                        gemX + gemSize * 0.35, gemY + gemSize * 0.35, 0,
+                        gemX + gemSize * 0.5, gemY + gemSize * 0.5, gemSize * 0.7
+                    );
+                    gradient.addColorStop(0, '#FFFACD');    // Light yellow (highlight)
+                    gradient.addColorStop(0.4, '#FFD700');  // Gold
+                    gradient.addColorStop(0.7, '#DAA520');  // Darker gold
+                    gradient.addColorStop(1, '#B8860B');    // Dark goldenrod (shadow)
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(gemX, gemY, gemSize, gemSize);
+                    
+                    // Add facet lines for gem appearance
+                    ctx.strokeStyle = '#B8860B';
+                    ctx.lineWidth = 1;
+                    const centerX = gemX + gemSize / 2;
+                    const centerY = gemY + gemSize / 2;
+                    
+                    // Draw diagonal facets
+                    ctx.beginPath();
+                    ctx.moveTo(gemX, gemY);
+                    ctx.lineTo(centerX, centerY);
+                    ctx.lineTo(gemX + gemSize, gemY);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(gemX + gemSize, gemY);
+                    ctx.lineTo(centerX, centerY);
+                    ctx.lineTo(gemX + gemSize, gemY + gemSize);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(gemX + gemSize, gemY + gemSize);
+                    ctx.lineTo(centerX, centerY);
+                    ctx.lineTo(gemX, gemY + gemSize);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(gemX, gemY + gemSize);
+                    ctx.lineTo(centerX, centerY);
+                    ctx.lineTo(gemX, gemY);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        return canvas;
     }
 }
 
@@ -580,3 +765,6 @@ class PieceSerializer {
         return pieces;
     }
 }
+
+// Verify the function exists
+console.log('PieceGenerator.createMovementPatternIcon exists?', typeof PieceGenerator.createMovementPatternIcon === 'function');
