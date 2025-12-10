@@ -129,13 +129,90 @@ class ChessEngine {
             for (let c = 0; c < 8; c++) {
                 const square = this.board[r][c];
                 if (square && square.color === byColor) {
-                    const moves = this.getPseudoLegalMoves(r, c);
-                    if (moves.some(m => m.row === row && m.col === col)) {
+                    if (this.canPieceAttackSquare(r, c, row, col)) {
                         return true;
                     }
                 }
             }
         }
+        return false;
+    }
+
+    // Determine whether a piece at (fromRow,fromCol) can attack the square (toRow,toCol)
+    // This routine mirrors movement rules but intentionally avoids calling
+    // `isSquareUnderAttack` or `getPseudoLegalMoves` to prevent recursion.
+    canPieceAttackSquare(fromRow, fromCol, toRow, toCol) {
+        const cellData = this.board[fromRow][fromCol];
+        if (!cellData) return false;
+
+        const piece = cellData.piece;
+        const direction = cellData.color === 'white' ? -1 : 1;
+
+        for (const move of piece.moves) {
+            if (move.requiresUnmoved && cellData.hasMoved) continue;
+
+            const steps = move.getSteps();
+
+            for (const [dx, dy] of steps) {
+                const adjustedDy = dy * direction;
+                const maxDist = move.distance === -1 ? 8 : move.distance;
+
+                for (let dist = 1; dist <= maxDist; dist++) {
+                    const newRow = fromRow + adjustedDy * dist;
+                    const newCol = fromCol + dx * dist;
+
+                    if (newRow < 0 || newRow > 7 || newCol < 0 || newCol > 7) break;
+
+                    // If this is the target square, determine if the move can attack it
+                    if (newRow === toRow && newCol === toCol) {
+                        const targetCell = this.board[newRow][newCol];
+                        const hasObstacle = targetCell !== null;
+                        const isCapture = hasObstacle && targetCell.color !== cellData.color;
+
+                        // move.capture === 'prohibited' cannot capture (e.g., pawn forward)
+                        if (move.capture === 'prohibited' && hasObstacle) {
+                            return false;
+                        }
+
+                        // capture-only moves must capture
+                        if (move.capture === 'required' && !isCapture) {
+                            return false;
+                        }
+
+                        // If path is blocked before reaching target, it's not an attack
+                        if (move.jump !== 'required') {
+                            // Check intervening squares
+                            let pathClear = true;
+                            for (let d = 1; d < dist; d++) {
+                                const midRow = fromRow + adjustedDy * d;
+                                const midCol = fromCol + dx * d;
+                                if (this.board[midRow][midCol] !== null) {
+                                    pathClear = false;
+                                    break;
+                                }
+                            }
+                            if (!pathClear) return false;
+                        }
+
+                        // If we reached here, the piece can attack the target square
+                        // For jumping moves, captures are allowed if target occupied by enemy
+                        if (move.jump === 'required') {
+                            // jumping moves only reach when dist==1
+                            return move.distance === 1 || dist === 1 ? (move.capture !== 'required' || isCapture) : false;
+                        }
+
+                        return true;
+                    }
+
+                    // If there's an obstacle before the target, sliding stops
+                    if (this.board[newRow][newCol] !== null && move.jump !== 'required') break;
+
+                    // Jump moves only go one distance
+                    if (move.jump === 'required') break;
+                }
+            }
+        }
+
         return false;
     }
 
@@ -584,9 +661,16 @@ class ChessEngine {
                 return true;
             } else if (cellData.piece.promotionType === 'move-upgrade') {
                 // Automatic move upgrade promotion
-                const rng = this.seed !== null ? new SeededRandom(this.seed + toRow * 8 + toCol) : null;
-                const upgradedMoves = PieceGenerator.generateUpgradeMoves(cellData.piece.moves, rng || {next: Math.random});
-                
+                // Prefer pre-generated upgradeMoves on the piece (populated at piece generation).
+                let upgradedMoves = [];
+                if (cellData.piece.upgradeMoves && cellData.piece.upgradeMoves.length > 0) {
+                    upgradedMoves = cellData.piece.upgradeMoves;
+                } else {
+                    // Fallback: generate now using seeded RNG
+                    const rng = this.seed !== null ? new SeededRandom(this.seed + toRow * 8 + toCol) : null;
+                    upgradedMoves = PieceGenerator.generateUpgradeMoves(cellData.piece.moves, rng || {next: Math.random});
+                }
+
                 // Create new upgraded piece
                 const upgradedPiece = new Piece(
                     cellData.piece.name,
@@ -597,7 +681,7 @@ class ChessEngine {
                     -1,
                     null
                 );
-                
+
                 this.board[toRow][toCol].piece = upgradedPiece;
             }
         }

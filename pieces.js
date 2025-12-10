@@ -74,7 +74,7 @@ class Move {
 }
 
 class Piece {
-    constructor(name, moves, royal, specials, promotionPieces, promotionRank, promotionType = null) {
+    constructor(name, moves, royal, specials, promotionPieces, promotionRank, promotionType = null, upgradeMoves = []) {
         this.name = name;
         this.moves = moves; // [Move]
         this.royal = royal; // bool
@@ -82,6 +82,7 @@ class Piece {
         this.promotionPieces = promotionPieces; // [Piece]
         this.promotionRank = promotionRank; // int (0-7)
         this.promotionType = promotionType; // 'choice' (pawns), 'move-upgrade' (directionally restricted), or null
+        this.upgradeMoves = upgradeMoves; // [Move] - pre-generated moves for move-upgrade promotions
     }
 }
 
@@ -270,12 +271,15 @@ class PieceGenerator {
             // Check if piece needs move-upgrade promotion
             let promotionRank = -1;
             let promotionType = null;
-            
+            let upgradeMoves = [];
+
             if (this.isDirectionallyRestricted(moves)) {
                 promotionRank = this.getFarthestReachableRank(moves);
                 promotionType = 'move-upgrade';
+                // Pre-generate upgrade moves now (use seeded rng)
+                upgradeMoves = this.generateUpgradeMoves(moves, rng);
             }
-            
+
             const piece = new Piece(
                 symbol,
                 moves,
@@ -283,7 +287,8 @@ class PieceGenerator {
                 [],
                 [],
                 promotionRank,
-                promotionType
+                promotionType,
+                upgradeMoves
             );
             pieces.push(piece);
         }
@@ -291,9 +296,11 @@ class PieceGenerator {
         // Generate standard chess pawn
         const pawnMoves = [
             // Forward move (1 square always, up to 2 squares on first move)
-            new Move([0, 1], 'Horizontal', 2, 'prohibited', false, 'prohibited'),
+            new Move([0, 1], 'Horizontal', 1, 'prohibited', false, 'prohibited'),
             // Diagonal capture
-            new Move([1, 1], 'Horizontal', 1, 'prohibited', false, 'required')
+            new Move([1, 1], 'Horizontal', 1, 'prohibited', false, 'required'),
+            // Double Move handled by requiresUnmoved in first move
+            new Move([0, 1], 'Horizontal', 2, 'prohibited', true, 'prohibited')
         ];
         
         // Promotion pieces: all non-pawn, non-royal pieces
@@ -509,6 +516,7 @@ class PieceGenerator {
         
         const centerPos = Math.floor(gridSize / 2); // Center at position 3 in 7x7 grid
         
+        
         // Create a set of all reachable positions
         const reachable = new Set();
         
@@ -548,7 +556,35 @@ class PieceGenerator {
                 }
             }
         }
-        
+
+        // Create a set of all reachable positions for upgrade moves
+        const upgradeReachable = new Set();
+
+        // Simulate all possible moves from the center position for upgrade moves (if present)
+        if (piece.upgradeMoves && piece.upgradeMoves.length > 0) {
+            for (const move of piece.upgradeMoves) {
+                if (move.requiresUnmoved) continue;
+                const stepsU = move.getSteps();
+                for (const [dx, dy] of stepsU) {
+                    const maxDistU = move.distance === -1 ? gridSize : move.distance;
+                    for (let dist = 1; dist <= maxDistU; dist++) {
+                        const shouldFlip = (playerPerspective === 'black' && color === 'black') ||
+                                          (playerPerspective === 'white' && color === 'white');
+                        const flipDy = shouldFlip ? -dy : dy;
+                        const newX = centerPos + (dx * dist);
+                        const newY = centerPos + (flipDy * dist);
+
+                        if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize) {
+                            upgradeReachable.add(`${newX},${newY}`);
+                            if (move.jump === 'required') break;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         // Canvas is transparent by default, only draw the reachable squares
         for (let y = 0; y < gridSize; y++) {
             for (let x = 0; x < gridSize; x++) {
@@ -559,72 +595,42 @@ class PieceGenerator {
                 const py = Math.floor(gridY * cellSize);
                 const width = Math.floor((gridX + 1) * cellSize) - px;
                 const height = Math.floor((gridY + 1) * cellSize) - py;
-                
+
                 // Check if this is a reachable position or the center (for royal gem)
                 const isCenter = (x === centerPos && y === centerPos);
                 const isReachable = reachable.has(`${x},${y}`);
-                
+                const isUpgradeReachable = upgradeReachable.has(`${x},${y}`);
+
                 if (isReachable) {
                     // Fill with piece color
                     ctx.fillStyle = color === 'white' ? '#ffffff' : '#000000';
                     ctx.fillRect(px, py, width, height);
+                } else if (isUpgradeReachable) {
+                    // Fill upgrade squares with neutral gray
+                    ctx.fillStyle = '#808080ff';
+                    ctx.fillRect(px, py, width, height);
                 }
-                
-                // Add golden gem in center for royal pieces
-                if (isCenter && piece.royal) {
-                    // Create a faceted gem appearance with gradients
-                    const gemSize = Math.floor(cellSize * 0.85);
-                    const gemOffset = Math.floor((cellSize - gemSize) / 2);
-                    const gemX = px + gemOffset;
-                    const gemY = py + gemOffset;
-                    
-                    // Create radial gradient for shimmer effect
-                    const gradient = ctx.createRadialGradient(
-                        gemX + gemSize * 0.35, gemY + gemSize * 0.35, 0,
-                        gemX + gemSize * 0.5, gemY + gemSize * 0.5, gemSize * 0.7
-                    );
-                    gradient.addColorStop(0, '#FFFACD');    // Light yellow (highlight)
-                    gradient.addColorStop(0.4, '#FFD700');  // Gold
-                    gradient.addColorStop(0.7, '#DAA520');  // Darker gold
-                    gradient.addColorStop(1, '#B8860B');    // Dark goldenrod (shadow)
-                    
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(gemX, gemY, gemSize, gemSize);
-                    
-                    // Add facet lines for gem appearance
-                    ctx.strokeStyle = '#B8860B';
-                    ctx.lineWidth = 1;
-                    const centerX = gemX + gemSize / 2;
-                    const centerY = gemY + gemSize / 2;
-                    
-                    // Draw diagonal facets
-                    ctx.beginPath();
-                    ctx.moveTo(gemX, gemY);
-                    ctx.lineTo(centerX, centerY);
-                    ctx.lineTo(gemX + gemSize, gemY);
-                    ctx.stroke();
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(gemX + gemSize, gemY);
-                    ctx.lineTo(centerX, centerY);
-                    ctx.lineTo(gemX + gemSize, gemY + gemSize);
-                    ctx.stroke();
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(gemX + gemSize, gemY + gemSize);
-                    ctx.lineTo(centerX, centerY);
-                    ctx.lineTo(gemX, gemY + gemSize);
-                    ctx.stroke();
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(gemX, gemY + gemSize);
-                    ctx.lineTo(centerX, centerY);
-                    ctx.lineTo(gemX, gemY);
-                    ctx.stroke();
+
+                // Add golden gem in center for royal pieces (override any fills)
+                if (isCenter) {
+                    if (piece.royal) {
+                        // Diagonal shimmering gold gradient across the center cell
+                        const grad = ctx.createLinearGradient(px, py, px + width, py + height);
+                        grad.addColorStop(0, '#e7e774ff'); // pale highlight
+                        grad.addColorStop(0.25, '#FFFF33'); // very bright yellow
+                        grad.addColorStop(0.6, '#FFD700'); // gold
+                        grad.addColorStop(1, '#B8860B'); // dark goldenrod (shadow)
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(px, py, width, height);
+                    } else {
+                        // Non-royal center cell: fill with neutral gray
+                        ctx.fillStyle = '#808080ff';
+                        ctx.fillRect(px, py, width, height);
+                    }
                 }
             }
         }
-        
+
         return canvas;
     }
 }
@@ -650,7 +656,15 @@ class PieceSerializer {
             })),
             promotionPieces: piece.promotionPieces.map((_, idx) => idx), // Store indices instead of references
             promotionRank: piece.promotionRank,
-            promotionType: piece.promotionType
+            promotionType: piece.promotionType,
+            upgradeMoves: (piece.upgradeMoves || []).map(move => ({
+                step: move.step,
+                symmetry: move.symmetry,
+                distance: move.distance,
+                jump: move.jump,
+                requiresUnmoved: move.requiresUnmoved,
+                capture: move.capture
+            }))
         }));
     }
 
@@ -674,19 +688,31 @@ class PieceSerializer {
                     moveData.capture
                 )
             );
-            
+
+            const upgradeMoves = (pieceData.upgradeMoves || []).map(moveData =>
+                new Move(
+                    moveData.step,
+                    moveData.symmetry,
+                    moveData.distance,
+                    moveData.jump,
+                    moveData.requiresUnmoved,
+                    moveData.capture
+                )
+            );
+
             const specials = pieceData.specials.map(specialData =>
                 new Special(specialData.type, specialData.data)
             );
-            
+
             return new Piece(
                 pieceData.name,
                 moves,
                 pieceData.royal,
                 specials,
-                [], // Temporary empty array
+                [], // Temporary empty array for promotionPieces
                 pieceData.promotionRank,
-                pieceData.promotionType
+                pieceData.promotionType,
+                upgradeMoves
             );
         });
         
