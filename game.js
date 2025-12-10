@@ -23,17 +23,16 @@ class RandoChessApp {
         this.multiplayerClient = new MultiplayerClient();
         this.setupMultiplayerCallbacks();
         
-        // Start AI game by default
-        this.startAIGame();
-        
-        // Do not auto-start multiplayer search — make it optional via button
-        // Ensure UI shows we're currently playing the AI and expose the search button
+        // Start compulsory multiplayer search by default (user may cancel)
         if (this.uiManager) {
-            this.uiManager.setOpponentStatus('🤖');
-            this.uiManager.showSearchButton();
-            // Wire search button to start matchmaking on demand
+            this.uiManager.setOpponentStatus('⏳');
+            // Register handlers for search and cancel actions
             this.uiManager.onSearchClick(() => this.startMultiplayerSearch());
+            this.uiManager.onCancelClick(() => this.cancelMultiplayerSearch());
         }
+
+        // Begin matchmaking immediately
+        this.startMultiplayerSearch();
     }
 
     // Seed controls and seed display removed; seed remains internal to PieceGenerator
@@ -69,14 +68,35 @@ class RandoChessApp {
         // Show permanent searching status and update opponent indicator
         this.uiManager.showMessage('🔍', 0);
         if (this.uiManager) {
-            this.uiManager.setOpponentStatus('🔍');
-            // Disable the search button while queued
-            this.uiManager.disableSearchButton();
+            // Indicate we're searching but also have an AI opponent available locally
+            this.uiManager.setOpponentStatus('🤖🔍');
+            // Turn the search control into a cancel control while queued
+            this.uiManager.showCancelButton();
         }
 
         // Connect to multiplayer server with current pieces
         const serializedPieces = PieceSerializer.serialize(this.pieces);
         this.multiplayerClient.connect(this.pieces);
+        // While queued, start an AI game locally so the player can play while waiting.
+        // When a match is found the multiplayer callback will stop the AI controller.
+        if (!(this.currentController instanceof AIGameController)) {
+            this.startAIGame();
+        }
+    }
+
+    cancelMultiplayerSearch() {
+        // Disconnect from server and fall back to AI game
+        if (this.multiplayerClient) {
+            this.multiplayerClient.disconnect();
+        }
+        if (this.uiManager) {
+            this.uiManager.clearMessage();
+            this.uiManager.setOpponentStatus('🤖');
+            this.uiManager.showSearchButton();
+            this.uiManager.showMessage('Search cancelled', 2000);
+        }
+        // Start AI game when user cancels matchmaking
+        this.startAIGame();
     }
 
     setupMultiplayerCallbacks() {

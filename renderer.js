@@ -311,6 +311,18 @@ class UIManager {
             this.searchButton.style.display = 'block';
             this.searchButton.disabled = false;
             this.searchButton.textContent = '🔍';
+            // Ensure the active click handler matches the search handler if present
+            if (this._searchHandler) this.searchButton.onclick = this._searchHandler;
+        }
+    }
+
+    showCancelButton() {
+        if (this.searchButton) {
+            this.searchButton.style.display = 'block';
+            this.searchButton.disabled = false;
+            this.searchButton.textContent = '✖';
+            // Attach cancel handler if present
+            if (this._cancelHandler) this.searchButton.onclick = this._cancelHandler;
         }
     }
 
@@ -328,8 +340,18 @@ class UIManager {
     }
 
     onSearchClick(callback) {
-        if (this.searchButton) {
-            this.searchButton.addEventListener('click', callback);
+        // Register a search handler and attach it when the button is in search mode
+        this._searchHandler = callback;
+        if (this.searchButton && this.searchButton.textContent === '🔍') {
+            this.searchButton.onclick = callback;
+        }
+    }
+
+    onCancelClick(callback) {
+        // Register a cancel handler and attach it when the button is in cancel mode
+        this._cancelHandler = callback;
+        if (this.searchButton && this.searchButton.textContent === '✖') {
+            this.searchButton.onclick = callback;
         }
     }
 

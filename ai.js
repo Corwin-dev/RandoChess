@@ -161,7 +161,7 @@ class ChessAI {
             for (let col = 0; col < 8; col++) {
                 const square = engine.board[row][col];
                 if (square) {
-                    const pieceValue = this.getPieceValue(square.piece, row, col);
+                    const pieceValue = this.getPieceValue(square.piece, row, col, square.color);
                     if (square.color === currentPlayer) {
                         score += pieceValue;
                         // Approximate move count instead of calling getAllMoves
@@ -194,7 +194,7 @@ class ChessAI {
     }
 
     // Get piece value based on its characteristics
-    getPieceValue(piece, row, col) {
+    getPieceValue(piece, row, col, color) {
         let value = 0;
 
         // Royal piece is invaluable
@@ -221,9 +221,12 @@ class ChessAI {
             }
         }
 
-        // Promotion potential
+        // Promotion potential (account for piece color so pawns are valued correctly)
         if (piece.promotionPieces && piece.promotionPieces.length > 0) {
-            const distanceToPromotion = Math.abs(row - piece.promotionRank);
+            // For choice promotions (pawns), promotion rank depends on the pawn's color:
+            // white promotes on rank 0, black on rank 7. Use color to compute distance.
+            const promotionTargetRank = color === 'white' ? 0 : 7;
+            const distanceToPromotion = Math.abs(row - promotionTargetRank);
             value += 1; // Base pawn value
             if (distanceToPromotion < 3) {
                 value += (3 - distanceToPromotion) * 0.5; // Closer to promotion = more valuable
