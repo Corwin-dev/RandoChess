@@ -222,10 +222,13 @@ class BoardRenderer {
 // UI Manager for messages and controls
 class UIManager {
     constructor() {
-        this.messageElement = document.getElementById('message');
+        // HUD elements consolidated into #opponent-status
+        this.hudContainer = document.getElementById('opponent-status');
+        this.opponentElement = this.hudContainer; // legacy name
+        this.opponentIcon = document.getElementById('opponent-icon');
+        this.messageElement = document.getElementById('hud-message');
         this.turnElement = document.getElementById('current-turn');
-        this.searchButton = document.getElementById('search-opponent-btn');
-        this.opponentElement = document.getElementById('opponent-status');
+        this.searchButton = document.getElementById('toggle-search-btn');
         this.endmatchControls = document.getElementById('endmatch-controls');
         this.rematchRollBtn = document.getElementById('rematch-roll-btn');
         this.rematchKeepBtn = document.getElementById('rematch-keep-btn');
@@ -328,15 +331,17 @@ class UIManager {
 
     // Set a persistent opponent type/status: 'AI', 'Human', 'Searching', or custom text
     setOpponentStatus(text) {
-        if (this.opponentElement) {
+        // Primary visual is the opponent icon (emoji). Also keep a textual permanent status in HUD.
+        if (this.opponentIcon) {
+            this.opponentIcon.textContent = text;
+        } else if (this.opponentElement) {
             this.opponentElement.textContent = text;
         }
     }
 
     clearOpponentStatus() {
-        if (this.opponentElement) {
-            this.opponentElement.textContent = '';
-        }
+        if (this.opponentIcon) this.opponentIcon.textContent = '';
+        if (this.messageElement) this.messageElement.textContent = '';
     }
 
     onSearchClick(callback) {

@@ -181,6 +181,48 @@ footer a:hover {
     overflow: visible;
 }
 
+/* Opponent status badge shown above the board to indicate human/AI/search */
+.opponent-status,
+#opponent-status {
+    position: absolute;
+    top: -44px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.95);
+    color: #333;
+    padding: 6px 10px;
+    border-radius: 18px;
+    font-size: 1.0em;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+    z-index: 5;
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+}
+
+.opponent-icon {
+    font-size: 1.4em;
+}
+
+.hud-message {
+    font-size: 0.95em;
+    color: #333;
+    min-width: 80px;
+    text-align: center;
+}
+
+.hud-toggle {
+    background: transparent;
+    border: none;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.1em;
+}
+.hud-toggle:hover { background: rgba(0,0,0,0.04); }
+
 /* Movement overlay removed per user request. */
 
 #board {
@@ -370,6 +412,17 @@ footer a:hover {
         width: 400px;
         height: 400px;
     }
+
+    .opponent-status,
+    #opponent-status {
+        top: -36px;
+        font-size: 1.1em;
+    }
+    .hud-message {
+        min-width: 60px;
+    }
+    .opponent-icon { font-size: 1.1em; }
+    .hud-toggle { font-size: 1em; }
 
     #board {
         width: 400px;

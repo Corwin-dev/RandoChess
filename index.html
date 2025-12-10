@@ -13,7 +13,12 @@
 <body>
     <div class="container">
         <div id="board-container">
-            <div id="board"></div>
+                <div id="opponent-status" class="opponent-status">
+                    <div id="opponent-icon" class="opponent-icon">🤖</div>
+                    <div id="hud-message" class="hud-message">AI ready</div>
+                    <button id="toggle-search-btn" class="hud-toggle">🔍</button>
+                </div>
+                <div id="board"></div>
             <div id="promotion-dialog" class="promotion-dialog hidden">
                 <div class="promotion-content">
                     <h3>⬆️</h3>
@@ -22,10 +27,7 @@
             </div>
         </div>
     </div>
-    <div class="status-row">
-        <div id="message">🤖</div>
-        <button id="search-opponent-btn">🔍</button>
-    </div>
+    <!-- Status HUD moved into #opponent-status above the board -->
     <!-- End-of-match controls (hidden until game over) -->
     <div class="endmatch-row hidden" id="endmatch-controls">
         <button id="rematch-roll-btn" class="endmatch-btn">🎲</button>
