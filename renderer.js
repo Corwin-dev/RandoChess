@@ -211,23 +211,49 @@ class UIManager {
         this.searchButton = document.getElementById('search-opponent-btn');
         this.promotionDialog = document.getElementById('promotion-dialog');
         this.promotionChoices = document.getElementById('promotion-choices');
+        this.permanentStatus = ''; // Store permanent status message (like search status)
+        this.messageTimeout = null; // Track active message timeout
     }
 
     showMessage(msg, duration = 3000) {
         if (this.messageElement) {
-            this.messageElement.textContent = msg;
+            // Clear any existing timeout
+            if (this.messageTimeout) {
+                clearTimeout(this.messageTimeout);
+                this.messageTimeout = null;
+            }
             
-            if (duration > 0) {
-                setTimeout(() => {
-                    this.clearMessage();
+            // If duration is 0, this is a permanent status message
+            if (duration === 0) {
+                this.permanentStatus = msg;
+                this.messageElement.textContent = msg;
+            } else {
+                // Temporary message - show it and restore permanent status after
+                this.messageElement.textContent = msg;
+                this.messageTimeout = setTimeout(() => {
+                    this.restorePermanentStatus();
+                    this.messageTimeout = null;
                 }, duration);
             }
         }
     }
 
+    restorePermanentStatus() {
+        if (this.messageElement && this.permanentStatus) {
+            this.messageElement.textContent = this.permanentStatus;
+        } else {
+            this.clearMessage();
+        }
+    }
+
     clearMessage() {
         if (this.messageElement) {
+            this.permanentStatus = '';
             this.messageElement.textContent = '';
+            if (this.messageTimeout) {
+                clearTimeout(this.messageTimeout);
+                this.messageTimeout = null;
+            }
         }
     }
 

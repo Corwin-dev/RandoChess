@@ -88,7 +88,7 @@ class AIGameController extends GameController {
         
         super.start(placement);
         
-        this.uiManager.clearMessage();
+        // Don't clear the message - preserve multiplayer search status
         
         // If AI plays first, make AI move
         if (this.engine.currentTurn === this.aiColor) {

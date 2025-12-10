@@ -27,22 +27,29 @@ class RandoChessApp {
         this.multiplayerClient = new MultiplayerClient();
         this.setupMultiplayerCallbacks();
         
-        // Set up search button
-        this.uiManager.onSearchClick(() => this.startMultiplayerSearch());
-        
         // Start AI game by default
         this.startAIGame();
+        
+        // Auto-start multiplayer search in background
+        this.startMultiplayerSearch();
     }
 
     setupSeedControls() {
-        const newGameBtn = document.getElementById('new-game-btn');
-        newGameBtn.addEventListener('click', () => {
-            const seedInput = document.getElementById('seed-input');
+        const rerollBtn = document.getElementById('reroll-board-btn');
+        const resetBtn = document.getElementById('reset-board-btn');
+        const seedInput = document.getElementById('seed-input');
+
+        rerollBtn.addEventListener('click', () => {
             const seed = seedInput.value ? parseInt(seedInput.value) : null;
             this.pieces = PieceGenerator.generateRandomPieces(seed);
             this.displayCurrentSeed();
             console.log('Generated new pieces with seed:', PieceGenerator.lastUsedSeed);
             console.log('Pieces:', this.pieces.map(p => p.name));
+            this.startAIGame();
+        });
+
+        resetBtn.addEventListener('click', () => {
+            // Just reset the board/game with the current pieces
             this.startAIGame();
         });
     }
@@ -72,11 +79,9 @@ class RandoChessApp {
         });
         
         this.currentController.start();
-        this.uiManager.showSearchButton();
     }
 
     startMultiplayerSearch() {
-        this.uiManager.disableSearchButton();
         this.uiManager.showMessage('Searching for opponent...', 0);
         
         // Connect to multiplayer server with current pieces
@@ -112,7 +117,6 @@ class RandoChessApp {
             
             this.currentController.start(placement, color);
             
-            this.uiManager.hideSearchButton();
             this.uiManager.showMessage(`Match found! You are ${color}`, 3000);
         };
         
@@ -123,9 +127,10 @@ class RandoChessApp {
         };
         
         this.multiplayerClient.onOpponentLeft = () => {
-            this.uiManager.showMessage('Opponent left. Starting new AI game...', 3000);
+            this.uiManager.showMessage('Opponent left. Starting new AI game and searching for opponent...', 3000);
             setTimeout(() => {
                 this.startAIGame();
+                this.startMultiplayerSearch();
             }, 3000);
         };
         
