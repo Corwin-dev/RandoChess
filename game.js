@@ -29,7 +29,7 @@ class RandoChessApp {
         // Do not auto-start multiplayer search — make it optional via button
         // Ensure UI shows we're currently playing the AI and expose the search button
         if (this.uiManager) {
-            this.uiManager.setOpponentStatus('AI');
+            this.uiManager.setOpponentStatus('🤖');
             this.uiManager.showSearchButton();
             // Wire search button to start matchmaking on demand
             this.uiManager.onSearchClick(() => this.startMultiplayerSearch());
@@ -60,16 +60,16 @@ class RandoChessApp {
         this.currentController.start();
         // Update UI to show we're playing AI
         if (this.uiManager) {
-            this.uiManager.setOpponentStatus('AI');
+            this.uiManager.setOpponentStatus('🤖');
             this.uiManager.showSearchButton();
         }
     }
 
     startMultiplayerSearch() {
         // Show permanent searching status and update opponent indicator
-        this.uiManager.showMessage('Searching for opponent...', 0);
+        this.uiManager.showMessage('🔍', 0);
         if (this.uiManager) {
-            this.uiManager.setOpponentStatus('Searching...');
+            this.uiManager.setOpponentStatus('🔍');
             // Disable the search button while queued
             this.uiManager.disableSearchButton();
         }
@@ -81,7 +81,7 @@ class RandoChessApp {
 
     setupMultiplayerCallbacks() {
         this.multiplayerClient.onMatchFound = (color, pieces, placement) => {
-            console.log('Match found! Playing as', color);
+            console.log('👤', color);
             
             // Update pieces to server's version (ensures both players have same pieces)
             this.pieces = pieces;
@@ -108,10 +108,10 @@ class RandoChessApp {
             this.currentController.start(placement, color);
             // Clear any permanent "Searching..." status so it doesn't reappear later
             this.uiManager.clearMessage();
-            this.uiManager.showMessage(`Match found! You are ${color}`, 3000);
+            this.uiManager.showMessage(`👤`, 3000);
             // Show that opponent is human and what color they are
             if (this.uiManager) {
-                this.uiManager.setOpponentStatus(`Human (${color})`);
+                this.uiManager.setOpponentStatus(`👤`);
                 this.uiManager.hideSearchButton();
                 // Hide any end-of-match controls (we're in a fresh match)
                 if (this.uiManager.hideEndmatchControls) this.uiManager.hideEndmatchControls();
@@ -146,7 +146,7 @@ class RandoChessApp {
                 if (this.multiplayerClient) this.multiplayerClient.leaveAndQueue();
                 // hide controls while searching
                 this.uiManager.hideEndmatchControls();
-                this.uiManager.setOpponentStatus('Searching...');
+                this.uiManager.setOpponentStatus('⏳');
             });
             this.uiManager.onAIMatchClick(() => {
                 // Refresh page to reset to AI match — simpler and reliable
@@ -157,10 +157,10 @@ class RandoChessApp {
         this.multiplayerClient.onOpponentLeft = () => {
             // Clear any lingering permanent status (e.g. 'Searching...') before showing this
             this.uiManager.clearMessage();
-            this.uiManager.showMessage('Opponent left. Starting new AI game...', 3000);
+            this.uiManager.showMessage('👤❌➡️🤖', 3000);
             // Update opponent status immediately so it's obvious
             if (this.uiManager) {
-                this.uiManager.setOpponentStatus('AI');
+                this.uiManager.setOpponentStatus('🤖');
             }
             setTimeout(() => {
                 this.startAIGame();

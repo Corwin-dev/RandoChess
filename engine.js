@@ -607,13 +607,13 @@ class ChessEngine {
     makeMove(fromRow, fromCol, toRow, toCol) {
         const cellData = this.board[fromRow][fromCol];
         if (!cellData) {
-            console.error('No piece at', fromRow, fromCol);
+            console.warn('No piece at', fromRow, fromCol);
             return false;
         }
         
         // Verify it's the right color's turn
         if (cellData.color !== this.currentTurn) {
-            console.error('Not your turn');
+            console.warn('Not your turn');
             return false;
         }
         
@@ -621,7 +621,7 @@ class ChessEngine {
         const validMoves = this.getValidMoves(fromRow, fromCol);
         const moveData = validMoves.find(m => m.row === toRow && m.col === toCol);
         if (!moveData) {
-            console.error('Invalid move');
+            console.warn('Invalid move');
             return false;
         }
         
@@ -717,14 +717,14 @@ class ChessEngine {
     // Complete a pending promotion choice
     completePromotion(pieceIndex) {
         if (!this.pendingPromotion) {
-            console.error('No pending promotion');
+            console.warn('No pending promotion');
             return false;
         }
         
         const { row, col, promotionPieces } = this.pendingPromotion;
         
         if (pieceIndex < 0 || pieceIndex >= promotionPieces.length) {
-            console.error('Invalid promotion piece index');
+            console.warn('Invalid promotion piece index');
             return false;
         }
         

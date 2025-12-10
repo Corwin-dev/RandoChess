@@ -23,7 +23,7 @@ class GameController {
     }
 
     render() {
-        this.renderer.render(this.engine.board);
+        this.renderer.render(this.engine.board, this.engine.lastMove);
     }
 
     handleSquareClick(row, col) {
@@ -131,16 +131,16 @@ class AIGameController extends GameController {
         this.uiManager.updateTurn(this.engine.currentTurn);
         
         // Show check status
-        if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('Check!', 2000);
-        }
+            if (this.engine.isInCheck(this.engine.currentTurn)) {
+                this.uiManager.showMessage('⚠️', 2000);
+            }
         
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') {
-                this.uiManager.showMessage('Stalemate - Draw!', 0);
+                this.uiManager.showMessage('🤝', 0);
             } else {
-                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             }
             this.isActive = false;
             // Show end-of-match controls for multiplayer
@@ -160,13 +160,13 @@ class AIGameController extends GameController {
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') {
-                this.uiManager.showMessage('Stalemate - Draw!', 0);
+                this.uiManager.showMessage('🤝', 0);
             } else {
-                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             }
             this.isActive = false;
         } else if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('Check!', 2000);
+            this.uiManager.showMessage('⚠️', 2000);
         }
     }
 
@@ -187,16 +187,16 @@ class AIGameController extends GameController {
                 this.uiManager.updateTurn(this.engine.currentTurn);
                 
                 // Show check status
-                if (this.engine.isInCheck(this.engine.currentTurn)) {
-                    this.uiManager.showMessage('Check!', 2000);
-                }
+                    if (this.engine.isInCheck(this.engine.currentTurn)) {
+                        this.uiManager.showMessage('⚠️', 2000);
+                    }
                 
                 if (this.engine.isGameOver()) {
                     const winner = this.engine.getWinner();
                     if (winner === 'draw') {
-                        this.uiManager.showMessage('Stalemate - Draw!', 0);
+                        this.uiManager.showMessage('🤝', 0);
                     } else {
-                        this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+                        this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
                     }
                     this.isActive = false;
                 }
@@ -269,15 +269,15 @@ class MultiplayerGameController extends GameController {
         
         // Show check status
         if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('Check!', 2000);
+            this.uiManager.showMessage('⚠️', 2000);
         }
         
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') {
-                this.uiManager.showMessage('Stalemate - Draw!', 0);
+                this.uiManager.showMessage('🤝', 0);
             } else {
-                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             }
             this.isActive = false;
             return;
@@ -288,13 +288,13 @@ class MultiplayerGameController extends GameController {
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') {
-                this.uiManager.showMessage('Stalemate - Draw!', 0);
+                this.uiManager.showMessage('🤝', 0);
             } else {
-                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             }
             this.isActive = false;
         } else if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('Check!', 2000);
+            this.uiManager.showMessage('⚠️', 2000);
         }
     }
 
@@ -312,15 +312,15 @@ class MultiplayerGameController extends GameController {
         
         // Show check status
         if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('Check!', 2000);
+            this.uiManager.showMessage('⚠️', 2000);
         }
         
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') {
-                this.uiManager.showMessage('Stalemate - Draw!', 0);
+                this.uiManager.showMessage('🤝', 0);
             } else {
-                this.uiManager.showMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins by checkmate!`, 0);
+                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             }
             this.isActive = false;
             if (this.uiManager && this instanceof MultiplayerGameController) {

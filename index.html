@@ -3,42 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RandoChess - Randomized Abstract Chess</title>
+    <title>♟️🎲</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>RandoChess</h1>
-        <div class="game-info">
-            <div class="turn-indicator">
-                <span id="current-turn">White</span> to move
-            </div>
-            <!-- Seed controls removed: seed is hidden/internal for now -->
-        </div>
+        <h1>♟️🎲</h1>
         <div id="board-container">
             <div id="board"></div>
             <div id="promotion-dialog" class="promotion-dialog hidden">
                 <div class="promotion-content">
-                    <h3>Choose Promotion Piece</h3>
+                    <h3>⬆️</h3>
                     <div id="promotion-choices"></div>
                 </div>
             </div>
         </div>
         <div class="status-row">
-            <div id="message">Starting AI game...</div>
-            <button id="search-opponent-btn">Search for Opponent</button>
+            <div id="message">🤖</div>
+            <button id="search-opponent-btn">🔍</button>
         </div>
         <!-- End-of-match controls (hidden until game over) -->
         <div class="endmatch-row hidden" id="endmatch-controls">
-            <button id="rematch-roll-btn" class="endmatch-btn">Rematch (Roll)</button>
-            <button id="rematch-keep-btn" class="endmatch-btn">Rematch (Keep)</button>
-            <button id="new-opponent-btn" class="endmatch-btn">New Opponent</button>
-            <button id="ai-match-btn" class="endmatch-btn">AI Match</button>
+            <button id="rematch-roll-btn" class="endmatch-btn">🎲</button>
+            <button id="rematch-keep-btn" class="endmatch-btn">🔁</button>
+            <button id="new-opponent-btn" class="endmatch-btn">🔍</button>
+            <button id="ai-match-btn" class="endmatch-btn">🤖</button>
         </div>
     </div>
     
     <footer>
-        <p><a href="mailto:corwin.pearson@gmail.com">corwin.pearson@gmail.com</a></p>
+        <p><a href="mailto:corwin.pearson@gmail.com">✉️</a></p>
     </footer>
     
     <!-- Load modules in dependency order -->

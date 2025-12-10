@@ -865,7 +865,7 @@ class PieceGenerator {
             const isStraightMove = (dx === 0 || dy === 0 || dx === dy);
             // Orthogonal moves must slide, only diagonal/knight moves can jump
             const jump = (isStraightMove || isOrthogonal) ? 'prohibited' : 'required';
-            const distance = jump === 'required' ? 1 : (random() < 0.5 ? -1 : 1);
+            const distance = jump === 'required' ? 1 : (random() < 0.5 ? -1 : Math.floor(Math.pow(random(), 2) *3) +1);
             
             moves[0] = new Move([dx, dy], symmetry, distance, jump, false);
         }

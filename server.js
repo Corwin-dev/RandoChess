@@ -62,7 +62,7 @@ function matchPlayer(ws, pieces = null) {
         waitingQueue.push({ ws: ws, pieces: pieces });
         ws.send(JSON.stringify({
             type: 'WAITING',
-            message: 'Waiting for opponent...'
+            message: '⏳'
         }));
         console.log('Player added to queue');
     }
@@ -129,7 +129,7 @@ function handleMove(ws, data) {
     if (player.color !== session.currentTurn) {
         ws.send(JSON.stringify({
             type: 'ERROR',
-            message: 'Not your turn'
+            message: '⛔'
         }));
         return;
     }

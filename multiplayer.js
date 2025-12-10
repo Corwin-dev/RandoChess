@@ -51,7 +51,7 @@ class MultiplayerClient {
         this.ws.onerror = (error) => {
             console.error('WebSocket error:', error);
             if (this.onMessage) {
-                this.onMessage('Connection error - please refresh');
+                this.onMessage('⚠️');
             }
         };
         
@@ -59,7 +59,7 @@ class MultiplayerClient {
             console.log('Disconnected from server');
             this.isConnected = false;
             if (this.onMessage) {
-                this.onMessage('Disconnected - please refresh');
+                this.onMessage('🔌❌');
             }
         };
     }
@@ -94,8 +94,10 @@ class MultiplayerClient {
                 }
                 
                 if (data.gameOver && this.onMessage) {
-                    const winner = data.winner || 'Unknown';
-                    this.onMessage(`${winner.charAt(0).toUpperCase() + winner.slice(1)} wins!`);
+                    const winner = data.winner || null;
+                    if (winner === 'white') this.onMessage('⚪🏁');
+                    else if (winner === 'black') this.onMessage('⚫🏁');
+                    else this.onMessage('🤝');
                 }
                 break;
                 
@@ -104,7 +106,7 @@ class MultiplayerClient {
                     this.onOpponentLeft();
                 }
                 if (this.onMessage) {
-                    this.onMessage('Opponent left the game');
+                    this.onMessage('👤❌');
                 }
                 break;
 

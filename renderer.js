@@ -139,7 +139,8 @@ class BoardRenderer {
     }
 
     // Render the board state
-    render(board) {
+    // `lastMove` is optional: {fromRow, fromCol, toRow, toCol}
+    render(board, lastMove = null) {
         this.boardElement.innerHTML = '';
 
         // Render from player's perspective
@@ -182,6 +183,17 @@ class BoardRenderer {
                 const isValidMove = this.validMoves.some(m => m.row === row && m.col === col);
                 if (isValidMove) {
                     square.classList.add('valid-move');
+                }
+
+                // Highlight last move (from/to)
+                if (lastMove) {
+                    const fromMatch = lastMove.fromRow === row && lastMove.fromCol === col;
+                    const toMatch = lastMove.toRow === row && lastMove.toCol === col;
+                    if (fromMatch || toMatch) {
+                        square.classList.add('last-move');
+                        if (fromMatch) square.classList.add('last-move-from');
+                        if (toMatch) square.classList.add('last-move-to');
+                    }
                 }
 
                 this.boardElement.appendChild(square);
@@ -269,14 +281,22 @@ class UIManager {
 
     updateTurn(color) {
         if (this.turnElement) {
-            this.turnElement.textContent = color.charAt(0).toUpperCase() + color.slice(1);
+            const emoji = color === 'white' ? '⚪' : (color === 'black' ? '⚫' : '🤝');
+            this.turnElement.textContent = emoji;
+        }
+        // Toggle body classes so CSS can change visuals for each turn
+        try {
+            document.body.classList.toggle('turn-black', color === 'black');
+            document.body.classList.toggle('turn-white', color === 'white');
+        } catch (e) {
+            // ignore when document isn't available (tests / non-browser env)
         }
     }
 
     disableSearchButton() {
         if (this.searchButton) {
             this.searchButton.disabled = true;
-            this.searchButton.textContent = 'Searching...';
+            this.searchButton.textContent = '⏳';
         }
     }
 
@@ -290,14 +310,14 @@ class UIManager {
         if (this.searchButton) {
             this.searchButton.style.display = 'block';
             this.searchButton.disabled = false;
-            this.searchButton.textContent = 'Search for Opponent';
+            this.searchButton.textContent = '🔍';
         }
     }
 
     // Set a persistent opponent type/status: 'AI', 'Human', 'Searching', or custom text
     setOpponentStatus(text) {
         if (this.opponentElement) {
-            this.opponentElement.textContent = `Opponent: ${text}`;
+            this.opponentElement.textContent = text;
         }
     }
 
@@ -404,7 +424,7 @@ class UIManager {
                 console.error('Error creating icon for promotion choice:', error);
                 // Fallback: show piece symbol or name minimally
                 const fallback = document.createElement('div');
-                fallback.textContent = piece.name || '?';
+                fallback.textContent = '❓';
                 fallback.style.color = '#fff';
                 choice.appendChild(fallback);
             }

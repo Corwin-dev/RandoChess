@@ -266,6 +266,15 @@ footer a:hover {
     min-height: 30px;
 }
 
+/* Status row (message + search button) */
+.status-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
 /* Promotion Dialog */
 .promotion-dialog {
     position: absolute;
@@ -377,5 +386,43 @@ footer a:hover {
     }
     
     /* Movement overlay styles removed */
+}
+
+/* Last-move highlighting: sky blue for both squares involved */
+.square.last-move {
+    background: #87CEEB !important; /* skyblue */
+    box-shadow: inset 0 0 6px rgba(0,0,0,0.25);
+}
+
+/* When it's black's turn, make the main container background black for strong contrast */
+/* Softer, palette-consistent container backgrounds for turn states */
+body.turn-black .container {
+    background: linear-gradient(180deg, #0f1724 0%, #223252 100%); /* deep blue-gray */
+    color: #e6eef8;
+    box-shadow: 0 20px 60px rgba(10, 20, 30, 0.6);
+}
+
+body.turn-white .container {
+    background: linear-gradient(180deg, #ffffff 0%, #7e93b4 100%); /* soft off-white */
+    color: #111827;
+    box-shadow: 0 20px 60px rgba(100, 120, 180, 0.12);
+}
+
+/* Ensure current-turn label remains readable on dark container */
+body.turn-black #current-turn {
+    color: #ffd873; /* softer warm highlight */
+}
+
+/* Ensure move-selection highlights override last-move highlight when both classes are present */
+.square.valid-move.last-move,
+.square.last-move.valid-move {
+    background: #90ee90 !important; /* green for valid move */
+    box-shadow: inset 0 0 15px rgba(0, 100, 0, 0.3);
+}
+
+.square.selected.last-move,
+.square.last-move.selected {
+    background: #4a90e2 !important; /* blue for selected */
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
 }
 
