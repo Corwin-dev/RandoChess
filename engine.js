@@ -21,18 +21,49 @@ class ChessEngine {
         const clonedMoves = piece.moves.map(m => new Move([...m.step], m.symmetry, m.distance, m.jump, m.requiresUnmoved, m.capture));
         const clonedSpecials = piece.specials.map(s => new Special(s.type, Object.assign({}, s.data)));
 
-        // Apply king-specific variant overrides
+        // Apply king-specific variant overrides while preserving any special
+        // extra moves (like knight jumps or distance-2 slides). We restrict
+        // only the base single-step moves according to the variant.
         if (piece.royal && variant && variant !== 'normal') {
-            if (variant === 'orthogonal') {
-                // Restrict to orthogonal single-step moves
-                const orth = [ [1,0], [-1,0], [0,1], [0,-1] ];
-                const orthMoves = orth.map(step => new Move(step, null, 1, 'prohibited', false));
-                return new Piece(piece.name, orthMoves, piece.royal, clonedSpecials, piece.promotionPieces, piece.promotionRank, piece.promotionType, piece.upgradeMoves);
-            } else if (variant === 'diagonal') {
-                const diag = [ [1,1], [1,-1], [-1,1], [-1,-1] ];
-                const diagMoves = diag.map(step => new Move(step, null, 1, 'prohibited', false));
-                return new Piece(piece.name, diagMoves, piece.royal, clonedSpecials, piece.promotionPieces, piece.promotionRank, piece.promotionType, piece.upgradeMoves);
+            const preserved = [];
+            const base = [];
+
+            for (const m of clonedMoves) {
+                const dx = Math.abs(m.step[0]);
+                const dy = Math.abs(m.step[1]);
+
+                const isSingleStep = (dx === 1 && dy === 0) || (dx === 0 && dy === 1) || (dx === 1 && dy === 1);
+                const isJump = m.jump === 'required';
+                const isLong = m.distance && m.distance > 1;
+
+                if (isJump || isLong) {
+                    // preserve any knight/jump or multi-square moves
+                    preserved.push(new Move([...m.step], m.symmetry, m.distance, m.jump, m.requiresUnmoved, m.capture));
+                } else if (isSingleStep) {
+                    // candidate for base moves; will be filtered by variant
+                    base.push(m);
+                } else {
+                    // keep other moves conservative
+                    preserved.push(new Move([...m.step], m.symmetry, m.distance, m.jump, m.requiresUnmoved, m.capture));
+                }
             }
+
+            const filteredBase = [];
+            if (variant === 'orthogonal') {
+                for (const m of base) {
+                    const [dx, dy] = m.step;
+                    if (Math.abs(dx) === 1 && dy === 0) filteredBase.push(new Move([...m.step], m.symmetry, m.distance, m.jump, m.requiresUnmoved, m.capture));
+                    if (Math.abs(dy) === 1 && dx === 0) filteredBase.push(new Move([...m.step], m.symmetry, m.distance, m.jump, m.requiresUnmoved, m.capture));
+                }
+            } else if (variant === 'diagonal') {
+                for (const m of base) {
+                    const [dx, dy] = m.step;
+                    if (Math.abs(dx) === 1 && Math.abs(dy) === 1) filteredBase.push(new Move([...m.step], m.symmetry, m.distance, m.jump, m.requiresUnmoved, m.capture));
+                }
+            }
+
+            const finalMoves = [...filteredBase, ...preserved];
+            return new Piece(piece.name, finalMoves, piece.royal, clonedSpecials, piece.promotionPieces, piece.promotionRank, piece.promotionType, piece.upgradeMoves);
         }
 
         return new Piece(piece.name, clonedMoves, piece.royal, clonedSpecials, piece.promotionPieces, piece.promotionRank, piece.promotionType, piece.upgradeMoves);
