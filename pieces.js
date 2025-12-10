@@ -233,9 +233,16 @@ class PieceGenerator {
         const usedSymbols = new Set(); // Track used symbols
 
         // Generate Royal piece (must have one)
-        // 75% chance: 2 moves, 25% chance: 3 moves
-        const royalMoveCount = Math.pow(rng.next(), 2) < 0.75 ? 2 : 3;
-        const royalMoves = this.generateRandomMoves(royalMoveCount, true, rng);
+        // Royal is fixed to behave like a King: one square in any direction
+        const royalMoves = [];
+        const kingSteps = [
+            [1, 0], [-1, 0], [0, 1], [0, -1],
+            [1, 1], [1, -1], [-1, 1], [-1, -1]
+        ];
+        for (const step of kingSteps) {
+            // Each king-like move is distance 1, no jump
+            royalMoves.push(new Move(step, null, 1, 'prohibited', false));
+        }
         const royalSymbol = this.selectSymbolForPiece(royalMoves, true, false, usedSymbols);
         usedSymbols.add(royalSymbol);
         
