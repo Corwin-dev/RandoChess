@@ -40,6 +40,10 @@ class Move {
                 break;
             case '4way':
                 steps.push([-dx, dy], [dx, -dy], [-dx, -dy]);
+                // For orthogonal moves, also add rotations
+                if (dx === 0 || dy === 0) {
+                    steps.push([dy, dx], [-dy, dx], [dy, -dx], [-dy, -dx]);
+                }
                 break;
             case '8way':
                 steps.push([-dx, dy], [dx, -dy], [-dx, -dy]);
@@ -47,7 +51,18 @@ class Move {
                 break;
         }
 
-        return steps;
+        // Remove duplicates
+        const uniqueSteps = [];
+        const seen = new Set();
+        for (const step of steps) {
+            const key = `${step[0]},${step[1]}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueSteps.push(step);
+            }
+        }
+
+        return uniqueSteps;
     }
 }
 
@@ -156,7 +171,7 @@ class PieceGenerator {
         }
         
         // Add one bonus move for the upgrade
-        const stepOptions = [0, 0, 1, 1, 2];
+        const stepOptions = [0, 0, 0, 1, 1];
         let dx, dy;
         do {
             dx = stepOptions[Math.floor(rng.next() * stepOptions.length)];
@@ -189,9 +204,9 @@ class PieceGenerator {
         const usedSymbols = new Set(); // Track used symbols
 
         // Generate Royal piece (must have one)
-        // 50% chance: 1 move, 50% chance: 2 moves
-        const royalMoveCount = rng.next() < 0.5 ? 1 : 2;
-        const royalMoves = this.generateRandomMoves(royalMoveCount, true);
+        // 50% chance: 2 moves, 50% chance: 3 moves
+        const royalMoveCount = rng.next()^2 < 0.75 ? 3 : 2;
+        const royalMoves = this.generateRandomMoves(royalMoveCount, true, rng);
         const royalSymbol = this.selectSymbolForPiece(royalMoves, true, false, usedSymbols);
         usedSymbols.add(royalSymbol);
         const royal = new Piece(
@@ -451,15 +466,15 @@ class PieceGenerator {
         for (let i = 0; i < count; i++) {
             // Random step (0-3 in each direction, but not both 0)
             // Custom ratio: more weight on smaller values
-            const stepOptions = [0, 0, 0, 1, 1, 2];
+            const stepOptions = isRoyal ? [0, 1] : [0, 0, 0, 0, 0, 1, 1, 1, 2];
             let dx, dy;
             do {
                 dx = stepOptions[Math.floor(random() * stepOptions.length)];
                 dy = stepOptions[Math.floor(random() * stepOptions.length)];
             } while (dx === 0 && dy === 0);
 
-            // Royal pieces always get 8way symmetry
-            const symmetry = isRoyal ? '8way' : this.symmetries[Math.floor(random() * this.symmetries.length)];
+            // Royal pieces get 4way symmetry, others random
+            const symmetry = isRoyal ? '4way' : this.symmetries[Math.floor(random() * this.symmetries.length)];
             
             const requiresUnmoved = false; // Disabled - no one-time-use moves
 
@@ -469,8 +484,11 @@ class PieceGenerator {
             const jump = isStraightMove ? 'prohibited' : 'required';
             
             // Jump moves always distance 1, slide moves can be unlimited or limited
+            // Royal pieces always get distance 1
             let distance;
-            if (jump === 'required') {
+            if (isRoyal) {
+                distance = 1;
+            } else if (jump === 'required') {
                 distance = 1;
             } else {
                 // Slide moves: 50% unlimited, 50% limited
