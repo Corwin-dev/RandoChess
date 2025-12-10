@@ -20,17 +20,7 @@ class ChessAI {
 
     // Main AI move selection - takes a ChessEngine instance
     async getBestMove(engine) {
-        // ============================================================
-        // DEBUG: RANDOM MOVES - REMOVE THIS BEFORE PRODUCTION
-        // ============================================================
-        const allMoves = engine.getAllMoves(engine.currentTurn);
-        if (allMoves.length === 0) return null;
-        return allMoves[Math.floor(Math.random() * allMoves.length)];
-        // ============================================================
-        // END DEBUG - RESTORE ORIGINAL AI LOGIC BELOW
-        // ============================================================
-        
-        /* ORIGINAL AI LOGIC - COMMENTED OUT FOR DEBUG
+
         this.positionEvaluations = 0;
         const startTime = Date.now();
         
@@ -81,7 +71,6 @@ class ChessAI {
         console.log(`Best move score: ${bestScore}`);
         
         return bestMove;
-        */
     }
 
     // Helper to yield control back to browser
