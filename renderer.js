@@ -226,7 +226,11 @@ class UIManager {
         this.hudContainer = document.getElementById('opponent-status');
         this.opponentElement = this.hudContainer; // legacy name
         this.opponentIcon = document.getElementById('opponent-icon');
-        this.messageElement = document.getElementById('hud-message');
+        this.connectionBubble = document.getElementById('connection-bubble');
+        this.connectionIcon = document.getElementById('connection-icon');
+        this.thinkingBubble = document.getElementById('thinking-bubble');
+        this.clockElement = document.getElementById('clock');
+        this.messageElement = document.getElementById('hud-message'); // unused currently but kept
         this.turnElement = document.getElementById('current-turn');
         this.searchButton = document.getElementById('toggle-search-btn');
         this.endmatchControls = document.getElementById('endmatch-controls');
@@ -241,19 +245,49 @@ class UIManager {
     }
 
     showMessage(msg, duration = 3000) {
-        if (this.messageElement) {
-            // Clear any existing timeout
+        // Show short, emoji-only messages in the connection bubble if available.
+        // Store previous connection icon so we can restore it after the timeout.
+        if (this.connectionIcon || this.connectionBubble) {
             if (this.messageTimeout) {
                 clearTimeout(this.messageTimeout);
                 this.messageTimeout = null;
             }
-            
-            // If duration is 0, this is a permanent status message
+
+            if (duration === 0) {
+                // Permanent status: store as permanentConnection and show
+                this.permanentStatus = msg;
+                if (this.connectionIcon) this.connectionIcon.textContent = msg;
+                else if (this.connectionBubble) this.connectionBubble.textContent = msg;
+            } else {
+                // Temporary message: show then restore previous permanent
+                // Keep current shown to restore later
+                const prev = this.connectionIcon ? this.connectionIcon.textContent : (this.connectionBubble ? this.connectionBubble.textContent : '');
+                if (this.connectionIcon) this.connectionIcon.textContent = msg;
+                else if (this.connectionBubble) this.connectionBubble.textContent = msg;
+                this.messageTimeout = setTimeout(() => {
+                    if (this.permanentStatus) {
+                        if (this.connectionIcon) this.connectionIcon.textContent = this.permanentStatus;
+                        else if (this.connectionBubble) this.connectionBubble.textContent = this.permanentStatus;
+                    } else {
+                        if (this.connectionIcon) this.connectionIcon.textContent = prev;
+                        else if (this.connectionBubble) this.connectionBubble.textContent = prev;
+                    }
+                    this.messageTimeout = null;
+                }, duration);
+            }
+            return;
+        }
+
+        // Fallback: if no connection bubble, use messageElement if present
+        if (this.messageElement) {
+            if (this.messageTimeout) {
+                clearTimeout(this.messageTimeout);
+                this.messageTimeout = null;
+            }
             if (duration === 0) {
                 this.permanentStatus = msg;
                 this.messageElement.textContent = msg;
             } else {
-                // Temporary message - show it and restore permanent status after
                 this.messageElement.textContent = msg;
                 this.messageTimeout = setTimeout(() => {
                     this.restorePermanentStatus();
@@ -264,22 +298,30 @@ class UIManager {
     }
 
     restorePermanentStatus() {
+        // Restore permanent connection/icon status
+        if ((this.connectionIcon || this.connectionBubble) && this.permanentStatus) {
+            if (this.connectionIcon) this.connectionIcon.textContent = this.permanentStatus;
+            else if (this.connectionBubble) this.connectionBubble.textContent = this.permanentStatus;
+            return;
+        }
+
         if (this.messageElement && this.permanentStatus) {
             this.messageElement.textContent = this.permanentStatus;
-        } else {
-            this.clearMessage();
+            return;
         }
+
+        this.clearMessage();
     }
 
     clearMessage() {
-        if (this.messageElement) {
-            this.permanentStatus = '';
-            this.messageElement.textContent = '';
-            if (this.messageTimeout) {
-                clearTimeout(this.messageTimeout);
-                this.messageTimeout = null;
-            }
+        this.permanentStatus = '';
+        if (this.messageTimeout) {
+            clearTimeout(this.messageTimeout);
+            this.messageTimeout = null;
         }
+        if (this.connectionIcon) this.connectionIcon.textContent = '';
+        if (this.connectionBubble) this.connectionBubble.textContent = '';
+        if (this.messageElement) this.messageElement.textContent = '';
     }
 
     updateTurn(color) {
@@ -313,7 +355,11 @@ class UIManager {
         if (this.searchButton) {
             this.searchButton.style.display = 'block';
             this.searchButton.disabled = false;
-            this.searchButton.textContent = '🔍';
+            // Use a distinct start glyph so the connection bubble owns the magnifier
+            this.searchButton.textContent = '▶';
+            this.searchButton.classList.remove('cancel');
+            this.searchButton.classList.add('search');
+            this.searchButton.title = 'Start search';
             // Ensure the active click handler matches the search handler if present
             if (this._searchHandler) this.searchButton.onclick = this._searchHandler;
         }
@@ -323,7 +369,11 @@ class UIManager {
         if (this.searchButton) {
             this.searchButton.style.display = 'block';
             this.searchButton.disabled = false;
-            this.searchButton.textContent = '✖';
+            this.searchButton.textContent = '⏹';
+            // Make cancel visually prominent
+            this.searchButton.classList.remove('search');
+            this.searchButton.classList.add('cancel');
+            this.searchButton.title = 'Cancel search';
             // Attach cancel handler if present
             if (this._cancelHandler) this.searchButton.onclick = this._cancelHandler;
         }
@@ -331,17 +381,54 @@ class UIManager {
 
     // Set a persistent opponent type/status: 'AI', 'Human', 'Searching', or custom text
     setOpponentStatus(text) {
-        // Primary visual is the opponent icon (emoji). Also keep a textual permanent status in HUD.
+        // Primary visual is the opponent icon (emoji)
         if (this.opponentIcon) {
             this.opponentIcon.textContent = text;
-        } else if (this.opponentElement) {
-            this.opponentElement.textContent = text;
         }
     }
 
     clearOpponentStatus() {
         if (this.opponentIcon) this.opponentIcon.textContent = '';
         if (this.messageElement) this.messageElement.textContent = '';
+        if (this.connectionBubble) this.connectionBubble.textContent = '';
+        if (this.clockElement) this.clockElement.textContent = '';
+    }
+
+    // Connection/search status bubble
+    // Accept either an emoji/symbol or a semantic key. Keep HUD alingual.
+    setConnectionStatus(token) {
+        if (!this.connectionBubble) return;
+        // If caller passed an explicit emoji/token, use it. Otherwise map keys.
+        const map = {
+            searching: '🔍',
+            connected: '✅',
+            disconnected: '❌',
+            idle: '⏹️'
+        };
+        const emoji = token && token.length <= 2 ? token : (map[token] || token || '⚡');
+        // update icon node if present, otherwise set bubble text
+        if (this.connectionIcon) this.connectionIcon.textContent = emoji;
+        else this.connectionBubble.textContent = emoji;
+    }
+
+    // Indicate thinking state or short text in the thinking bubble
+    setThinking(token) {
+        if (!this.thinkingBubble) return;
+        const map = {
+            ready: '🧠',
+            thinking: '💭',
+            idle: '—'
+        };
+        const emoji = token && token.length <= 2 ? token : (map[token] || token || '');
+        this.thinkingBubble.textContent = emoji;
+    }
+
+    // Set the clock text (mm:ss)
+    setClock(text) {
+        if (!this.clockElement) return;
+        // Keep clock alingual: emoji + numeric time. If caller gives only numbers, prefix with timer icon.
+        const hasDigits = /\d/.test(text || '');
+        this.clockElement.textContent = hasDigits ? `⏱️ ${text}` : text || '⏱️ 00:00';
     }
 
     onSearchClick(callback) {

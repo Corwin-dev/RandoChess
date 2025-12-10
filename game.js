@@ -65,13 +65,15 @@ class RandoChessApp {
     }
 
     startMultiplayerSearch() {
-        // Show permanent searching status and update opponent indicator
-        this.uiManager.showMessage('🔍', 0);
+        // Show searching status and update opponent indicator
         if (this.uiManager) {
-            // Indicate we're searching but also have an AI opponent available locally
-            this.uiManager.setOpponentStatus('🤖🔍');
+            // Indicate we're showing an AI locally but searching for a human (emoji-only)
+            this.uiManager.setOpponentStatus('🤖');
+            this.uiManager.setConnectionStatus('searching');
             // Turn the search control into a cancel control while queued
             this.uiManager.showCancelButton();
+            // Show small thinking indicator for local AI play
+            this.uiManager.setThinking('ready');
         }
 
         // Connect to multiplayer server with current pieces
@@ -90,10 +92,11 @@ class RandoChessApp {
             this.multiplayerClient.disconnect();
         }
         if (this.uiManager) {
-            this.uiManager.clearMessage();
+            this.uiManager.setConnectionStatus('idle');
             this.uiManager.setOpponentStatus('🤖');
             this.uiManager.showSearchButton();
-            this.uiManager.showMessage('Search cancelled', 2000);
+            this.uiManager.setThinking('idle');
+            this.uiManager.setClock('00:00');
         }
         // Start AI game when user cancels matchmaking
         this.startAIGame();

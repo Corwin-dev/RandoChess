@@ -184,10 +184,9 @@ footer a:hover {
 /* Opponent status badge shown above the board to indicate human/AI/search */
 .opponent-status,
 #opponent-status {
-    position: absolute;
-    top: -44px;
-    left: 50%;
-    transform: translateX(-50%);
+    /* Use normal document flow so HUD displays above the board when moved in the DOM */
+    position: relative;
+    margin: 0 auto 12px auto; /* sit above the board and create spacing */
     background: rgba(255,255,255,0.95);
     color: #333;
     padding: 6px 10px;
@@ -195,22 +194,56 @@ footer a:hover {
     font-size: 1.0em;
     box-shadow: 0 6px 16px rgba(0,0,0,0.2);
     z-index: 5;
-    min-width: 140px;
+    min-width: 320px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     justify-content: center;
 }
 
-.opponent-icon {
-    font-size: 1.4em;
+/* HUD bubble base */
+.hud-bubble {
+    background: rgba(255,255,255,0.98);
+    padding: 8px 12px;
+    border-radius: 14px;
+    box-shadow: 0 6px 14px rgba(0,0,0,0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #222;
 }
 
-.hud-message {
-    font-size: 0.95em;
-    color: #333;
-    min-width: 80px;
-    text-align: center;
+.hud-center {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    padding: 0;
+}
+
+.opponent-icon {
+    font-size: 1.9em;
+}
+
+.hud-connection {
+    min-width: 140px;
+    padding: 8px 14px;
+    font-weight: 600;
+}
+
+.hud-thinking {
+    min-width: 110px;
+    flex-direction: column;
+    padding: 8px 10px;
+}
+
+#thinking-bubble {
+    font-size: 1.1em;
+}
+
+.clock {
+    font-size: 0.9em;
+    color: #666;
 }
 
 .hud-toggle {
@@ -219,9 +252,24 @@ footer a:hover {
     padding: 6px 8px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 1.1em;
+    font-size: 1.2em;
 }
 .hud-toggle:hover { background: rgba(0,0,0,0.04); }
+
+/* Toggle button color states */
+.hud-toggle.search {
+    background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%); /* blue */
+    color: white;
+    box-shadow: 0 6px 12px rgba(59,130,246,0.18);
+}
+.hud-toggle.search:hover { filter: brightness(1.03); }
+
+.hud-toggle.cancel {
+    background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%); /* red */
+    color: white;
+    box-shadow: 0 6px 12px rgba(239,68,68,0.18);
+}
+.hud-toggle.cancel:hover { filter: brightness(0.98); }
 
 /* Movement overlay removed per user request. */
 
@@ -418,11 +466,11 @@ footer a:hover {
         top: -36px;
         font-size: 1.1em;
     }
-    .hud-message {
-        min-width: 60px;
-    }
-    .opponent-icon { font-size: 1.1em; }
+    .opponent-icon { font-size: 1.3em; }
     .hud-toggle { font-size: 1em; }
+    .clock { font-size: 0.85em; }
+    /* Slightly reduce vertical offset on small screens */
+    #opponent-status { bottom: calc(100% + 8px); }
 
     #board {
         width: 400px;
