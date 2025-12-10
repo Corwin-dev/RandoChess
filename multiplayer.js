@@ -19,7 +19,12 @@ class MultiplayerClient {
     
     connect(pieces) {
         this.pieces = pieces;
-        
+        // Prevent opening multiple simultaneous connections
+        if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+            console.log('WebSocket already open or connecting — skipping connect');
+            return;
+        }
+
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}`;
         
@@ -123,8 +128,14 @@ class MultiplayerClient {
     
     disconnect() {
         if (this.ws) {
-            this.ws.close();
+            try {
+                this.ws.close();
+            } catch (e) {
+                console.warn('Error while closing WebSocket', e);
+            }
         }
+        this.ws = null;
+        this.isConnected = false;
     }
 }
 

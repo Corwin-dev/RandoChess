@@ -209,6 +209,7 @@ class UIManager {
         this.messageElement = document.getElementById('message');
         this.turnElement = document.getElementById('current-turn');
         this.searchButton = document.getElementById('search-opponent-btn');
+        this.opponentElement = document.getElementById('opponent-status');
         this.promotionDialog = document.getElementById('promotion-dialog');
         this.promotionChoices = document.getElementById('promotion-choices');
         this.permanentStatus = ''; // Store permanent status message (like search status)
@@ -281,6 +282,19 @@ class UIManager {
             this.searchButton.style.display = 'block';
             this.searchButton.disabled = false;
             this.searchButton.textContent = 'Search for Opponent';
+        }
+    }
+
+    // Set a persistent opponent type/status: 'AI', 'Human', 'Searching', or custom text
+    setOpponentStatus(text) {
+        if (this.opponentElement) {
+            this.opponentElement.textContent = `Opponent: ${text}`;
+        }
+    }
+
+    clearOpponentStatus() {
+        if (this.opponentElement) {
+            this.opponentElement.textContent = '';
         }
     }
 

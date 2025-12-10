@@ -131,17 +131,15 @@ function handleMove(ws, data) {
     // Update game state
     session.currentTurn = session.currentTurn === 'white' ? 'black' : 'white';
     
-    // Broadcast move to opponent only (not the sender)
+    // Broadcast move to both players (including the sender)
     session.players.forEach(p => {
-        if (p.ws !== ws) {
-            p.ws.send(JSON.stringify({
-                type: 'MOVE',
-                move: data.move,
-                currentTurn: session.currentTurn,
-                gameOver: data.gameOver || false,
-                winner: data.winner || null
-            }));
-        }
+        p.ws.send(JSON.stringify({
+            type: 'MOVE',
+            move: data.move,
+            currentTurn: session.currentTurn,
+            gameOver: data.gameOver || false,
+            winner: data.winner || null
+        }));
     });
     
     if (data.gameOver) {

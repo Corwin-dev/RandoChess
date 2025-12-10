@@ -79,11 +79,22 @@ class RandoChessApp {
         });
         
         this.currentController.start();
+        // Update UI to show we're playing AI
+        if (this.uiManager) {
+            this.uiManager.setOpponentStatus('AI');
+            this.uiManager.showSearchButton();
+        }
     }
 
     startMultiplayerSearch() {
+        // Show permanent searching status and update opponent indicator
         this.uiManager.showMessage('Searching for opponent...', 0);
-        
+        if (this.uiManager) {
+            this.uiManager.setOpponentStatus('Searching...');
+            // Disable the search button while queued
+            this.uiManager.disableSearchButton();
+        }
+
         // Connect to multiplayer server with current pieces
         const serializedPieces = PieceSerializer.serialize(this.pieces);
         this.multiplayerClient.connect(this.pieces);
@@ -116,8 +127,14 @@ class RandoChessApp {
             });
             
             this.currentController.start(placement, color);
-            
+            // Clear any permanent "Searching..." status so it doesn't reappear later
+            this.uiManager.clearMessage();
             this.uiManager.showMessage(`Match found! You are ${color}`, 3000);
+            // Show that opponent is human and what color they are
+            if (this.uiManager) {
+                this.uiManager.setOpponentStatus(`Human (${color})`);
+                this.uiManager.hideSearchButton();
+            }
         };
         
         this.multiplayerClient.onMove = (move) => {
@@ -127,10 +144,20 @@ class RandoChessApp {
         };
         
         this.multiplayerClient.onOpponentLeft = () => {
-            this.uiManager.showMessage('Opponent left. Starting new AI game and searching for opponent...', 3000);
+            // Clear any lingering permanent status (e.g. 'Searching...') before showing this
+            this.uiManager.clearMessage();
+            this.uiManager.showMessage('Opponent left. Starting new AI game...', 3000);
+            // Update opponent status immediately so it's obvious
+            if (this.uiManager) {
+                this.uiManager.setOpponentStatus('AI');
+            }
             setTimeout(() => {
                 this.startAIGame();
-                this.startMultiplayerSearch();
+                // The server will requeue the remaining player's open socket automatically.
+                // Only start a fresh search if the client is not connected (socket closed).
+                if (!this.multiplayerClient || !this.multiplayerClient.ws || this.multiplayerClient.ws.readyState === WebSocket.CLOSED) {
+                    this.startMultiplayerSearch();
+                }
             }, 3000);
         };
         
