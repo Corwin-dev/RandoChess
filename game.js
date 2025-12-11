@@ -1,6 +1,11 @@
 ﻿// ===== RandoChess - Main Application =====
 // Coordinates all modules and manages application state
 
+import { PieceGenerator } from './pieces.js';
+import { BoardRenderer, UIManager } from './renderer.js';
+import { MultiplayerClient } from './multiplayer.js';
+import { AIGameController, MultiplayerGameController } from './controllers.js';
+
 class RandoChessApp {
     constructor() {
         this.pieces = null;
@@ -13,7 +18,6 @@ class RandoChessApp {
     initialize() {
         // Generate initial pieces (seed is internal/hidden)
         this.pieces = PieceGenerator.generateRandomPieces();
-        console.log('Generated pieces:', this.pieces.map(p => p.name));
         
         // Set up UI
         this.renderer = new BoardRenderer(document.getElementById('board'));
@@ -249,3 +253,12 @@ window.addEventListener('DOMContentLoaded', () => {
     // Expose app globally for debugging
     window.randoChessApp = app;
 });
+
+// Attach and export the app class for module usage
+try {
+    if (typeof window !== 'undefined') {
+        window.RandoChessApp = RandoChessApp;
+    }
+} catch (e) { /* ignore in non-browser env */ }
+
+export { RandoChessApp };

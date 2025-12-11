@@ -67,8 +67,7 @@ class ChessAI {
         }
 
         const elapsed = Date.now() - startTime;
-        console.log(`AI evaluated ${this.positionEvaluations} positions in ${elapsed}ms`);
-        console.log(`Best move score: ${bestScore}`);
+        // Development logging removed: keep production quiet
         
         return bestMove;
     }
@@ -248,3 +247,12 @@ class ChessAI {
         }
     }
 }
+
+// Attach to window for backwards compatibility and export as ES module
+try {
+    if (typeof window !== 'undefined') {
+        window.ChessAI = ChessAI;
+    }
+} catch (e) { /* ignore in non-browser env */ }
+
+export { ChessAI };

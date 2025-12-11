@@ -72,6 +72,17 @@ class GameController {
     }
 }
 
+// Attach controllers to window for backwards compatibility and export as ES module
+try {
+    if (typeof window !== 'undefined') {
+        window.GameController = GameController;
+        window.AIGameController = AIGameController;
+        window.MultiplayerGameController = MultiplayerGameController;
+    }
+} catch (e) { /* ignore in non-browser env */ }
+
+export { GameController, AIGameController, MultiplayerGameController };
+
 // AI Game Mode Controller
 class AIGameController extends GameController {
     constructor(pieces, renderer, uiManager, difficulty = 'hard', seed = null) {

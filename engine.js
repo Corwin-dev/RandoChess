@@ -880,3 +880,12 @@ class ChessEngine {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports.ChessEngine = ChessEngine;
 }
+
+// Attach to window for backwards compatibility and export as ES module
+try {
+    if (typeof window !== 'undefined') {
+        window.ChessEngine = ChessEngine;
+    }
+} catch (e) { /* ignore in non-browser env */ }
+
+export { ChessEngine };

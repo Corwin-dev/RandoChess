@@ -1229,7 +1229,7 @@ class PieceSerializer {
             return null;
         }
         
-        console.log('Deserializing pieces:', piecesData.map(p => p.name));
+        // Deserialization in production shouldn't log by default
         
         // First pass: create all pieces without promotion references
         const pieces = piecesData.map(pieceData => {
@@ -1270,8 +1270,7 @@ class PieceSerializer {
     }
 }
 
-// Verify the function exists
-console.log('PieceGenerator.createMovementPatternIcon exists?', typeof PieceGenerator.createMovementPatternIcon === 'function');
+// Development-only checks removed to reduce console noise in production
 
 // Export for Node testing/runtime if available
 if (typeof module !== 'undefined' && module.exports) {
@@ -1281,3 +1280,18 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports.Special = Special;
     module.exports.PieceSerializer = PieceSerializer;
 }
+
+// Expose as ES module exports and attach to window for backwards compatibility
+try {
+    // Attach to window when running in browser so legacy scripts continue to work
+    if (typeof window !== 'undefined') {
+        window.PieceGenerator = PieceGenerator;
+        window.Piece = Piece;
+        window.Move = Move;
+        window.Special = Special;
+        window.PieceSerializer = PieceSerializer;
+    }
+} catch (e) { /* ignore in non-browser environments */ }
+
+// ES module exports
+export { PieceGenerator, Piece, Move, Special, PieceSerializer };

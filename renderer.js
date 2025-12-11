@@ -749,3 +749,13 @@ class UIManager {
         this.resultOverlay.style.pointerEvents = 'none';
     }
 }
+
+// Attach to window for backwards compatibility and export as ES module
+try {
+    if (typeof window !== 'undefined') {
+        window.BoardRenderer = BoardRenderer;
+        window.UIManager = UIManager;
+    }
+} catch (e) { /* ignore if not in browser env */ }
+
+export { BoardRenderer, UIManager };

@@ -196,3 +196,12 @@ class MultiplayerClient {
     }
 }
 
+// Attach to window for backwards compatibility and export as ES module
+try {
+    if (typeof window !== 'undefined') {
+        window.MultiplayerClient = MultiplayerClient;
+    }
+} catch (e) { /* ignore in non-browser env */ }
+
+export { MultiplayerClient };
+
