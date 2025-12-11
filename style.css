@@ -347,9 +347,9 @@ footer a:hover {
 .square.threat::after {
     content: '';
     position: absolute;
-    inset: 8px;
-    border-radius: 8px;
-    background: rgba(255, 0, 0, 0.233);
+    inset: 0px;
+    border-radius: 0px;
+    background: rgba(255, 0, 0, 0);
     pointer-events: none;
     z-index: 6;
 }
@@ -358,7 +358,7 @@ footer a:hover {
     position: absolute;
     width: 20px;
     height: 20px;
-    border-radius: 50%;
+    border-radius: 0%;
     background: rgba(100, 100, 100, 0.6);
     pointer-events: none;
     z-index: 5;

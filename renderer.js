@@ -176,9 +176,10 @@ class BoardRenderer {
                     }
                     square.appendChild(pieceIcon);
 
-                    // Only attach hover listeners for enemy pieces (relative to viewer)
-                    // If `playerColor` is not set, preserve previous behavior (attach for all)
-                    if (!this.playerColor || cellData.color !== this.playerColor) {
+                    // Attach hover listeners for all pieces so hovering shows threatened
+                    // squares for both white and black pieces (previously only attached
+                    // for enemy pieces relative to the viewer).
+                    {
                         // Add hover listeners on the square to show threatened squares
                         // Use the provided engine if available, otherwise try global app controller
                         square.addEventListener('mouseenter', (e) => {
