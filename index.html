@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" id="theme-color" content="#667eea">
     <meta name="google-adsense-account" content="ca-pub-1152509147742120">
     <title></title>
     <link rel="stylesheet" href="style.css">
@@ -32,6 +33,14 @@
         <button id="new-opponent-btn" class="endmatch-btn">🔍</button>
         <button id="ai-match-btn" class="endmatch-btn">🤖</button>
     </div>
+    <!-- Prominent result overlay (hidden until game over) -->
+    <div id="result-overlay" class="result-overlay hidden" role="status" aria-live="polite">
+        <div class="result-box">
+            <div id="result-emoji" class="result-emoji">🏁</div>
+            <div id="result-title" class="result-title">Game Over</div>
+            <div id="result-subtitle" class="result-subtitle">Stalemate / Checkmate</div>
+        </div>
+    </div>
     <footer>
         <p><a href="mailto:corwin.pearson@gmail.com">✉️</a></p>
     </footer>
@@ -44,6 +53,21 @@
     <script src="controllers.js?v=24"></script>
     <script src="multiplayer.js?v=24"></script>
     <script src="game.js?v=24"></script>
+    <script>
+        (function(){
+            function updateThemeColor(){
+                try{
+                    var meta = document.querySelector('meta[name="theme-color"]');
+                    var color = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary') || '#667eea';
+                    if(meta) meta.setAttribute('content', color.trim());
+                }catch(e){ /* ignore */ }
+            }
+            updateThemeColor();
+            var mq = window.matchMedia('(prefers-color-scheme: dark)');
+            if(mq.addEventListener) mq.addEventListener('change', updateThemeColor);
+            else if(mq.addListener) mq.addListener(updateThemeColor);
+        })();
+    </script>
 </body>
 
 </html>

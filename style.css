@@ -4,9 +4,28 @@
     box-sizing: border-box;
 }
 
+:root {
+    color-scheme: light dark;
+    --bg-primary: #667eea; /* primary gradient color (light theme) */
+    --bg-secondary: #764ba2; /* secondary gradient color (light theme) */
+    --container-bg: #ffffff;
+    --text-color: #333333;
+    --footer-fg: rgba(255,255,255,0.8);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #0b1220; /* deep navy */
+        --bg-secondary: #192432; /* slate blue/ink */
+        --container-bg: rgba(18,22,30,0.75);
+        --text-color: #e6eef8;
+        --footer-fg: rgba(230,238,248,0.85);
+    }
+}
+
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -16,7 +35,7 @@ body {
 }
 
 .container {
-    background: white;
+    background: var(--container-bg);
     border-radius: 15px;
     padding: 30px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -25,7 +44,7 @@ body {
 
 h1 {
     text-align: center;
-    color: #333;
+    color: var(--text-color);
     margin-bottom: 20px;
     font-size: 2.5em;
 }
@@ -58,7 +77,7 @@ h1 {
 
 .seed-info label {
     font-weight: bold;
-    color: #555;
+    color: var(--text-color);
 }
 
 .seed-info input {
@@ -71,12 +90,12 @@ h1 {
 
 .seed-info input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--bg-primary);
 }
 
 .seed-info button {
     padding: 5px 15px;
-    background: #667eea;
+    background: var(--bg-primary);
     color: white;
     border: none;
     border-radius: 5px;
@@ -90,14 +109,14 @@ h1 {
 }
 
 #current-seed {
-    color: #764ba2;
+    color: var(--bg-secondary);
     font-weight: bold;
     font-size: 0.95em;
 }
 
 button {
     padding: 10px 20px;
-    background: #667eea;
+    background: var(--bg-primary);
     color: white;
     border: none;
     border-radius: 5px;
@@ -107,7 +126,7 @@ button {
 }
 
 button:hover {
-    background: #764ba2;
+    background: var(--bg-secondary);
 }
 
 .ai-controls {
@@ -159,13 +178,13 @@ button:hover {
 footer {
     text-align: center;
     padding: 20px;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--footer-fg);
     font-size: 0.9em;
     margin-top: auto;
 }
 
 footer a {
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--footer-fg);
     text-decoration: none;
 }
 
@@ -434,6 +453,47 @@ footer a:hover {
     color: #fff;
     font-size: 1.2em;
 }
+
+/* Result overlay shown on checkmate / stalemate to make outcome obvious */
+.result-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.55);
+    z-index: 2000;
+    pointer-events: none; /* let buttons below remain if needed; we can change when showing */
+}
+
+.result-overlay .result-box {
+    pointer-events: auto;
+    background: rgba(255,255,255,0.98);
+    color: #111;
+    padding: 28px 34px;
+    border-radius: 14px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    min-width: 320px;
+}
+
+.result-emoji {
+    font-size: 3.4rem;
+    margin-bottom: 8px;
+}
+
+.result-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.result-subtitle {
+    font-size: 1.05rem;
+    color: #555;
+}
+
+.result-overlay.hidden { display: none !important; }
 
 #promotion-choices {
     display: flex;

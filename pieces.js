@@ -939,7 +939,7 @@ class PieceGenerator {
     }
 
     // Generate a canvas icon showing the movement pattern of a piece on a 7x7 grid
-    static createMovementPatternIcon(piece, size = 80, color = 'white', playerPerspective = 'white', isPromotionSquare = false) {
+    static createMovementPatternIcon(piece, size = 80, color = 'white', playerPerspective = 'white', isPromotionSquare = false, defeated = false) {
         const gridSize = 7;
         const borderCells = 0.5; // Half-cell transparent border on each side
         const totalGridSize = gridSize + (borderCells * 2); // 8x8 total with border
@@ -1056,14 +1056,28 @@ class PieceGenerator {
                 // Add golden gem in center for royal pieces (override any fills)
                 if (isCenter) {
                     if (piece.royal) {
-                        // Diagonal shimmering gold gradient across the center cell
-                        const grad = ctx.createLinearGradient(px, py, px + width, py + height);
-                        grad.addColorStop(0, '#e7e774ff'); // pale highlight
-                        grad.addColorStop(0.25, '#FFFF33'); // very bright yellow
-                        grad.addColorStop(0.6, '#FFD700'); // gold
-                        grad.addColorStop(1, '#B8860B'); // dark goldenrod (shadow)
-                        ctx.fillStyle = grad;
-                        ctx.fillRect(px, py, width, height);
+                        if (defeated) {
+                            // Ruby-red defeated center (deep ruby with subtle facet)
+                            const grad = ctx.createLinearGradient(px, py, px + width, py + height);
+                            grad.addColorStop(0, '#FF6B6B'); // light ruby
+                            grad.addColorStop(0.35, '#E63946'); // ruby
+                            grad.addColorStop(0.75, '#990012'); // deep ruby shadow
+                            grad.addColorStop(1, '#4B0000'); // near-black edge
+                            ctx.fillStyle = grad;
+                            ctx.fillRect(px, py, width, height);
+                            // Add subtle highlight facet
+                            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+                            ctx.fillRect(px + Math.floor(width * 0.18), py + Math.floor(height * 0.12), Math.floor(width * 0.28), Math.floor(height * 0.18));
+                        } else {
+                            // Diagonal shimmering gold gradient across the center cell
+                            const grad = ctx.createLinearGradient(px, py, px + width, py + height);
+                            grad.addColorStop(0, '#e7e774ff'); // pale highlight
+                            grad.addColorStop(0.25, '#FFFF33'); // very bright yellow
+                            grad.addColorStop(0.6, '#FFD700'); // gold
+                            grad.addColorStop(1, '#B8860B'); // dark goldenrod (shadow)
+                            ctx.fillStyle = grad;
+                            ctx.fillRect(px, py, width, height);
+                        }
                     } else if (isPromotionSquare) {
                         // Silver gradient for promotion/upgrade-ready pieces
                         const grad = ctx.createLinearGradient(px, py, px + width, py + height);

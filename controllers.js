@@ -14,6 +14,8 @@ class GameController {
     start(placement = null) {
         this.engine.initializeBoard(placement);
         this.isActive = true;
+        // Hide any previous match result overlay when starting
+        if (this.uiManager && this.uiManager.hideResult) this.uiManager.hideResult();
         this.render();
         this.uiManager.updateTurn(this.engine.currentTurn);
     }

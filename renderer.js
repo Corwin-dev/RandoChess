@@ -6,6 +6,7 @@ class BoardRenderer {
         this.boardElement = boardElement;
         this.movementOverlay = document.getElementById('movement-overlay');
         this.playerColor = null; // 'white', 'black', or null for white's perspective
+        this.defeatedColor = null; // when set to 'white' or 'black', show royal as defeated for that side
         this.selectedSquare = null; // {row, col}
         this.validMoves = []; // [{row, col}]
         this.theoreticalMoves = new Map(); // position -> {canMove, canCapture}
@@ -166,7 +167,8 @@ class BoardRenderer {
                     const isPromotionSquare = (cellData.piece.promotionType === 'move-upgrade') &&
                         ((cellData.color === 'white' && row === 0) || (cellData.color === 'black' && row === 7));
 
-                    const pieceIcon = PieceGenerator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor, isPromotionSquare);
+                    const defeated = this.defeatedColor && cellData.piece.royal && cellData.color === this.defeatedColor;
+                    const pieceIcon = PieceGenerator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor, isPromotionSquare, defeated);
                     pieceIcon.className = `piece ${cellData.color}`;
                     if (cellData.piece.royal) {
                         pieceIcon.classList.add('royal');
@@ -243,6 +245,10 @@ class UIManager {
         this.aiMatchBtn = document.getElementById('ai-match-btn');
         this.promotionDialog = document.getElementById('promotion-dialog');
         this.promotionChoices = document.getElementById('promotion-choices');
+        this.resultOverlay = document.getElementById('result-overlay');
+        this.resultEmoji = document.getElementById('result-emoji');
+        this.resultTitle = document.getElementById('result-title');
+        this.resultSubtitle = document.getElementById('result-subtitle');
         this.permanentStatus = ''; // Store permanent status message (like search status)
         this.messageTimeout = null; // Track active message timeout
         // Clock / time-control state
@@ -269,6 +275,17 @@ class UIManager {
     }
 
     showMessage(msg, duration = 3000) {
+        // If this looks like a permanent game result token (used across controllers), show the large overlay
+        const resultMap = {
+            '🤝': { emoji: '🤝', title: 'Stalemate', subtitle: 'Draw' },
+            '⚪🏁': { emoji: '⚪', title: 'Checkmate', subtitle: 'White wins' },
+            '⚫🏁': { emoji: '⚫', title: 'Checkmate', subtitle: 'Black wins' }
+        };
+        if (duration === 0 && resultMap[msg]) {
+            const info = resultMap[msg];
+            this.showResult(info.emoji, info.title, info.subtitle);
+            return;
+        }
         // Show short, emoji-only messages in the connection bubble if available.
         // Store previous connection icon so we can restore it after the timeout.
         if (this.connectionIcon || this.connectionBubble) {
@@ -624,7 +641,7 @@ class UIManager {
 
             // Try to generate and add the movement pattern icon
                 try {
-                const icon = PieceGenerator.createMovementPatternIcon(piece, 80);
+                const icon = PieceGenerator.createMovementPatternIcon(piece, 80, 'white', 'white', false, false);
                 icon.style.display = 'block';
                 icon.style.width = '80px';
                 icon.style.height = '80px';
@@ -656,5 +673,40 @@ class UIManager {
         if (this.promotionDialog) {
             this.promotionDialog.classList.add('hidden');
         }
+    }
+
+    // Show a prominent result overlay for checkmate/stalemate
+    showResult(emoji, title, subtitle) {
+        if (!this.resultOverlay) return;
+        if (this.resultEmoji) this.resultEmoji.textContent = emoji || '🏁';
+        if (this.resultTitle) this.resultTitle.textContent = title || 'Game Over';
+        if (this.resultSubtitle) this.resultSubtitle.textContent = subtitle || '';
+        this.resultOverlay.classList.remove('hidden');
+        // Make overlay catch pointer events while visible
+        this.resultOverlay.style.pointerEvents = 'auto';
+        // Determine defeated color from subtitle when possible (e.g. 'White wins' -> black defeated)
+        let defeated = null;
+        if (subtitle && typeof subtitle === 'string') {
+            if (subtitle.toLowerCase().includes('white wins')) defeated = 'black';
+            else if (subtitle.toLowerCase().includes('black wins')) defeated = 'white';
+        }
+        this.defeatedColor = defeated;
+        // Also set the global renderer's defeatedColor (if available) so board icons update
+        try {
+            if (window && window.randoChessApp && window.randoChessApp.renderer) {
+                window.randoChessApp.renderer.defeatedColor = defeated;
+                // Re-render the current board to show the defeated styling immediately
+                const app = window.randoChessApp;
+                if (app.currentController && app.currentController.engine && app.renderer) {
+                    app.renderer.render(app.currentController.engine.board, app.currentController.engine.lastMove);
+                }
+            }
+        } catch (e) { /* ignore in non-browser/test env */ }
+    }
+
+    hideResult() {
+        if (!this.resultOverlay) return;
+        this.resultOverlay.classList.add('hidden');
+        this.resultOverlay.style.pointerEvents = 'none';
     }
 }
