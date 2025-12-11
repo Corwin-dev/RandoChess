@@ -141,7 +141,8 @@ class BoardRenderer {
 
     // Render the board state
     // `lastMove` is optional: {fromRow, fromCol, toRow, toCol}
-    render(board, lastMove = null) {
+    // `engine` is optional: provide to enable hover threat computation
+    render(board, lastMove = null, engine = null) {
         this.boardElement.innerHTML = '';
 
         // Render from player's perspective
@@ -174,6 +175,39 @@ class BoardRenderer {
                         pieceIcon.classList.add('royal');
                     }
                     square.appendChild(pieceIcon);
+
+                    // Add hover listeners on the square to show threatened squares
+                    // Use the provided engine if available, otherwise try global app controller
+                    square.addEventListener('mouseenter', (e) => {
+                        try {
+                            const eng = engine || (window && window.randoChessApp && window.randoChessApp.currentController && window.randoChessApp.currentController.engine) || null;
+                            if (!eng) return;
+                            // Compute theoretical moves (ignores turn/king safety) which includes capture/move info
+                            const moveMap = eng.getTheoreticalMoves(row, col);
+                            const threatened = [];
+                            for (const [key, info] of moveMap.entries()) {
+                                // Treat any reachable square as a threatened square
+                                const [r, c] = key.split(',').map(Number);
+                                const sq = this.boardElement.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
+                                if (sq) {
+                                    sq.classList.add('threat');
+                                    threatened.push(sq);
+                                }
+                            }
+                            // Store for cleanup
+                            square._threatenedSquares = threatened;
+                        } catch (e) { /* ignore in test env */ }
+                    });
+
+                    square.addEventListener('mouseleave', (e) => {
+                        const list = square._threatenedSquares;
+                        if (list && Array.isArray(list)) {
+                            for (const s of list) {
+                                if (s) s.classList.remove('threat');
+                            }
+                        }
+                        square._threatenedSquares = null;
+                    });
                 }
 
                 // Highlight selected square
@@ -698,7 +732,7 @@ class UIManager {
                 // Re-render the current board to show the defeated styling immediately
                 const app = window.randoChessApp;
                 if (app.currentController && app.currentController.engine && app.renderer) {
-                    app.renderer.render(app.currentController.engine.board, app.currentController.engine.lastMove);
+                    app.renderer.render(app.currentController.engine.board, app.currentController.engine.lastMove, app.currentController.engine);
                 }
             }
         } catch (e) { /* ignore in non-browser/test env */ }

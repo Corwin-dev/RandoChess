@@ -25,7 +25,7 @@ class GameController {
     }
 
     render() {
-        this.renderer.render(this.engine.board, this.engine.lastMove);
+        this.renderer.render(this.engine.board, this.engine.lastMove, this.engine);
     }
 
     handleSquareClick(row, col) {
