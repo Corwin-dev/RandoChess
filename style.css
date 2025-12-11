@@ -349,7 +349,7 @@ footer a:hover {
     position: absolute;
     inset: 8px;
     border-radius: 8px;
-    background: rgba(255, 165, 0, 0.22);
+    background: rgba(255, 0, 0, 0.233);
     pointer-events: none;
     z-index: 6;
 }

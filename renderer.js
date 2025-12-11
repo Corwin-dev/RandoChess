@@ -176,38 +176,43 @@ class BoardRenderer {
                     }
                     square.appendChild(pieceIcon);
 
-                    // Add hover listeners on the square to show threatened squares
-                    // Use the provided engine if available, otherwise try global app controller
-                    square.addEventListener('mouseenter', (e) => {
-                        try {
-                            const eng = engine || (window && window.randoChessApp && window.randoChessApp.currentController && window.randoChessApp.currentController.engine) || null;
-                            if (!eng) return;
-                            // Compute theoretical moves (ignores turn/king safety) which includes capture/move info
-                            const moveMap = eng.getTheoreticalMoves(row, col);
-                            const threatened = [];
-                            for (const [key, info] of moveMap.entries()) {
-                                // Treat any reachable square as a threatened square
-                                const [r, c] = key.split(',').map(Number);
-                                const sq = this.boardElement.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
-                                if (sq) {
-                                    sq.classList.add('threat');
-                                    threatened.push(sq);
+                    // Only attach hover listeners for enemy pieces (relative to viewer)
+                    // If `playerColor` is not set, preserve previous behavior (attach for all)
+                    if (!this.playerColor || cellData.color !== this.playerColor) {
+                        // Add hover listeners on the square to show threatened squares
+                        // Use the provided engine if available, otherwise try global app controller
+                        square.addEventListener('mouseenter', (e) => {
+                            try {
+                                const eng = engine || (window && window.randoChessApp && window.randoChessApp.currentController && window.randoChessApp.currentController.engine) || null;
+                                if (!eng) return;
+                                // Compute legal moves (takes blocking, captures, and king safety into account)
+                                const moves = typeof eng.getValidMoves === 'function' ? eng.getValidMoves(row, col) : [];
+                                const threatened = [];
+                                for (const mv of moves) {
+                                    const r = mv.row, c = mv.col;
+                                    if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+                                    if (r < 0 || r > 7 || c < 0 || c > 7) continue;
+                                    const sq = this.boardElement.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
+                                    if (sq) {
+                                        sq.classList.add('threat');
+                                        threatened.push(sq);
+                                    }
+                                }
+                                // Store for cleanup
+                                square._threatenedSquares = threatened;
+                            } catch (e) { /* ignore in test env */ }
+                        });
+
+                        square.addEventListener('mouseleave', (e) => {
+                            const list = square._threatenedSquares;
+                            if (list && Array.isArray(list)) {
+                                for (const s of list) {
+                                    if (s) s.classList.remove('threat');
                                 }
                             }
-                            // Store for cleanup
-                            square._threatenedSquares = threatened;
-                        } catch (e) { /* ignore in test env */ }
-                    });
-
-                    square.addEventListener('mouseleave', (e) => {
-                        const list = square._threatenedSquares;
-                        if (list && Array.isArray(list)) {
-                            for (const s of list) {
-                                if (s) s.classList.remove('threat');
-                            }
-                        }
-                        square._threatenedSquares = null;
-                    });
+                            square._threatenedSquares = null;
+                        });
+                    }
                 }
 
                 // Highlight selected square
