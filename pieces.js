@@ -1098,6 +1098,103 @@ class PieceGenerator {
 
         return canvas;
     }
+
+    // Build a move table for the current engine state.
+    // Returns an object with per-color totals and per-symbol aggregations:
+    // { white: { total, bySymbol: { symbol: { countPieces, totalMoves } } }, black: { ... } }
+    static buildMoveTable(engine) {
+        const table = {
+            white: { total: 0, bySymbol: {} },
+            black: { total: 0, bySymbol: {} }
+        };
+
+        if (!engine || !engine.board) return table;
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const cell = engine.board[r][c];
+                if (!cell) continue;
+                const color = cell.color;
+                const symbol = cell.piece && cell.piece.name ? cell.piece.name : 'unknown';
+
+                // Use engine.getValidMoves to get legal move count for the piece
+                let moves = [];
+                try {
+                    moves = typeof engine.getValidMoves === 'function' ? engine.getValidMoves(r, c) : [];
+                } catch (e) {
+                    moves = [];
+                }
+
+                const count = Array.isArray(moves) ? moves.length : 0;
+
+                table[color].total += count;
+
+                if (!table[color].bySymbol[symbol]) {
+                    table[color].bySymbol[symbol] = { countPieces: 0, totalMoves: 0 };
+                }
+                table[color].bySymbol[symbol].countPieces += 1;
+                table[color].bySymbol[symbol].totalMoves += count;
+            }
+        }
+
+        return table;
+    }
+
+    // Compute a material score for each side and the advantage (white - black).
+    // Uses heuristics similar to the AI evaluator: long-range moves, number of directions,
+    // capture ability, promotion potential, and slight positional center bias.
+    static computeMaterialAdvantage(engine) {
+        let white = 0;
+        let black = 0;
+
+        if (!engine || !engine.board) return { white, black, advantage: white - black };
+
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const cell = engine.board[r][c];
+                if (!cell) continue;
+                const val = this.getStaticPieceValue(cell.piece, r, c, cell.color, engine);
+                if (cell.color === 'white') white += val;
+                else black += val;
+            }
+        }
+
+        return { white, black, advantage: white - black };
+    }
+
+    // Helper used by computeMaterialAdvantage to estimate a piece's static value.
+    static getStaticPieceValue(piece, row, col, color, engine = null) {
+        if (!piece) return 0;
+
+        // Royal piece is effectively invaluable (large sentinel)
+        if (piece.royal) return 10000;
+
+        let value = 0;
+
+        for (const move of piece.moves) {
+            if (move.distance === -1) value += 3;
+            else value += (move.distance || 0) * 0.5;
+
+            const steps = move.getSteps();
+            value += (steps.length || 0) * 0.3;
+
+            if (move.capture === 'allowed' || move.capture === 'required') value += 0.5;
+        }
+
+        // Promotion potential
+        if (piece.promotionPieces && piece.promotionPieces.length > 0) {
+            const promotionTargetRank = color === 'white' ? 0 : 7;
+            const distanceToPromotion = Math.abs(row - promotionTargetRank);
+            value += 1; // base pawn/promotion potential
+            if (distanceToPromotion < 3) value += (3 - distanceToPromotion) * 0.5;
+        }
+
+        // Small positional center bonus (encourage center control)
+        const centerDistance = Math.abs(3.5 - row) + Math.abs(3.5 - col);
+        value += (7 - centerDistance) * 0.1;
+
+        return value;
+    }
 }
 
 // Serialization helpers for network transfer

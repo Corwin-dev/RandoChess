@@ -79,6 +79,7 @@ class AIGameController extends GameController {
         this.ai = new ChessAI(difficulty);
         this.playerColor = null;
         this.aiColor = null;
+        this.aiTimeout = null;
     }
 
     start(placement = null, playerColor = null) {
@@ -188,24 +189,38 @@ class AIGameController extends GameController {
 
     async makeAIMove() {
         if (this.engine.isGameOver() || !this.isActive) return;
-        
-        setTimeout(async () => {
+
+        // Schedule AI move and keep a handle so we can cancel it if controller is stopped
+        this.aiTimeout = setTimeout(async () => {
+            // If controller was stopped while waiting, abort
+            if (!this.isActive || this.engine.isGameOver()) {
+                this.aiTimeout = null;
+                return;
+            }
+
             // AI is thinking now
             if (this.uiManager) {
                 this.uiManager.setThinking('thinking');
                 this.uiManager.startClock('ai');
             }
             const bestMove = await this.ai.getBestMove(this.engine);
+
+            // If controller was stopped while thinking, abort before applying a move
+            if (!this.isActive || this.engine.isGameOver()) {
+                this.aiTimeout = null;
+                return;
+            }
+
             if (bestMove) {
                 this.engine.makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol);
-                
+
                 // Handle AI promotion - always choose first piece (strongest)
                 if (this.engine.pendingPromotion) {
                     this.engine.completePromotion(0);
                 }
-                
+
                 this.render();
-                this.uiManager.updateTurn(this.engine.currentTurn);
+                if (this.uiManager) this.uiManager.updateTurn(this.engine.currentTurn);
                 // After AI move, start the player's clock
                 if (this.uiManager) {
                     const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
@@ -213,12 +228,12 @@ class AIGameController extends GameController {
                     if (owner === 'ai') this.uiManager.setThinking('thinking');
                     else this.uiManager.setThinking('');
                 }
-                
+
                 // Show check status
-                    if (this.engine.isInCheck(this.engine.currentTurn)) {
-                        this.uiManager.showMessage('⚠️', 2000);
-                    }
-                
+                if (this.engine.isInCheck(this.engine.currentTurn)) {
+                    this.uiManager.showMessage('⚠️', 2000);
+                }
+
                 if (this.engine.isGameOver()) {
                     const winner = this.engine.getWinner();
                     if (winner === 'draw') {
@@ -229,7 +244,21 @@ class AIGameController extends GameController {
                     this.isActive = false;
                 }
             }
+
+            this.aiTimeout = null;
         }, 500); // Small delay to make it feel natural
+    }
+
+    stop() {
+        if (this.aiTimeout) {
+            clearTimeout(this.aiTimeout);
+            this.aiTimeout = null;
+        }
+        super.stop();
+        if (this.uiManager) {
+            this.uiManager.setThinking('');
+            try { this.uiManager.stopClock(); } catch (e) {}
+        }
     }
 }
 
