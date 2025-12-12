@@ -354,16 +354,7 @@ class PieceGenerator {
         // Rarely, give the king extra flair: a knight-like jump or a two-square
         // orthogonal/double move. These are uncommon special abilities.
         // Use the seeded RNG so behavior is deterministic per-seed.
-        const extraRnd = rng.next();
-        // ~6% chance for a knight jump
-        if (extraRnd < 0.06) {
-            royalMoves.push(new Move([2, 1], '4way', 1, 'required', false));
-        }
-        // ~6% (next) chance for an orthogonal double-step (distance 2 slide)
-        if (extraRnd >= 0.06 && extraRnd < 0.12) {
-            // Add an orthogonal distance-2 slide; symmetry 4way to include both axes
-            royalMoves.push(new Move([2, 0], '4way', 2, 'prohibited', false));
-        }
+
         const royalSymbol = this.selectSymbolForPiece(royalMoves, true, false, usedSymbols);
         usedSymbols.add(royalSymbol);
         
