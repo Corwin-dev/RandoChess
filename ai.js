@@ -6,6 +6,16 @@ class ChessAI {
         this.difficulty = difficulty;
         this.searchDepth = this.getSearchDepth(difficulty);
         this.positionEvaluations = 0; // For debugging
+        this.transpositionTable = new Map();
+        this.timeLimits = this.getTimeLimits();
+
+        // Time-scaling parameters (tunable)
+        // Maximum thinking time in ms (0.5 minutes)
+        this.maxThinkMs = 30 * 1000;
+        // Only start boosting when the evaluation deficit (pawns) exceeds this
+        this.deficitThreshold = 3.0;
+        // Controls how quickly the boost grows once past the threshold
+        this.scaleFactor = 3.0;
     }
 
     getSearchDepth(difficulty) {
@@ -18,12 +28,45 @@ class ChessAI {
         }
     }
 
+    // Time limits per difficulty (ms) used by iterative deepening
+    getTimeLimits() {
+        return {
+            easy: 150,
+            medium: 500,
+            hard: 1200,
+            expert: 3000
+        };
+    }
+
     // Main AI move selection - takes a ChessEngine instance
     async getBestMove(engine) {
 
         this.positionEvaluations = 0;
         const startTime = Date.now();
-        
+        this.transpositionTable.clear(); // clear cache between top-level searches
+
+        // Base time for this difficulty
+        const baseTimeLimit = this.timeLimits[this.difficulty] || 500;
+
+        // Compute a slow, bounded boost if the engine is significantly behind.
+        // Use the evaluation (positive = good for engine). Only boost when
+        // deficit > deficitThreshold. Growth is smoothed with a sigmoid.
+        let timeLimit = baseTimeLimit;
+        try {
+            const evalScore = this.evaluatePosition(engine);
+            const deficit = Math.max(0, -evalScore);
+            if (deficit > this.deficitThreshold) {
+                const x = (deficit - this.deficitThreshold) / this.scaleFactor;
+                const sigmoid = 1 / (1 + Math.exp(-x));
+                const maxScale = Math.max(1, this.maxThinkMs / baseTimeLimit);
+                const scale = 1 + sigmoid * (maxScale - 1);
+                timeLimit = Math.min(this.maxThinkMs, Math.round(baseTimeLimit * scale));
+            }
+        } catch (e) {
+            // If evaluation fails for any reason, fall back to base timeLimit
+            timeLimit = baseTimeLimit;
+        }
+
         const allMoves = engine.getAllMoves(engine.currentTurn);
         
         if (allMoves.length === 0) {
@@ -37,33 +80,46 @@ class ChessAI {
 
         let bestMove = null;
         let bestScore = -Infinity;
-        let alpha = -Infinity;
-        let beta = Infinity;
 
-        // Shuffle moves for variety at same evaluation
-        this.shuffleArray(allMoves);
+        // Iterative deepening from depth 1..searchDepth so earlier iterations
+        // help populate the transposition table and improve move ordering.
+        for (let depth = 1; depth <= this.searchDepth; depth++) {
+            // Shuffle once at top-level to introduce variety, but rely on ordering
+            this.shuffleArray(allMoves);
 
-        for (let i = 0; i < allMoves.length; i++) {
-            const move = allMoves[i];
-            
-            // Yield to browser every few moves to prevent freezing
-            if (i > 0 && i % 3 === 0) {
-                await this.yield();
+            let alpha = -Infinity;
+            let beta = Infinity;
+            let localBest = null;
+            let localBestScore = -Infinity;
+
+            for (let i = 0; i < allMoves.length; i++) {
+                const move = allMoves[i];
+
+                // Yield to browser occasionally to avoid freezing
+                if (i > 0 && i % 4 === 0) await this.yield();
+
+                // Time cutoff: if exceeded, return best from last completed depth
+                if (Date.now() - startTime > timeLimit) {
+                    return bestMove || localBest;
+                }
+
+                const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                const score = -this.minimax(engine, depth - 1, -beta, -alpha, false);
+                engine.undoMove(snapshot);
+
+                if (score > localBestScore) {
+                    localBestScore = score;
+                    localBest = move;
+                }
+
+                alpha = Math.max(alpha, score);
             }
-            
-            // Make move on a copy of the engine
-            const engineCopy = engine.clone();
-            engineCopy.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
-            
-            // Evaluate position (opponent's turn, so we minimize)
-            const score = -this.minimax(engineCopy, this.searchDepth - 1, -beta, -alpha, false);
-            
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
+
+            // If we completed this depth, accept the local best as current best
+            if (localBest) {
+                bestMove = localBest;
+                bestScore = localBestScore;
             }
-            
-            alpha = Math.max(alpha, score);
         }
 
         const elapsed = Date.now() - startTime;
@@ -81,9 +137,16 @@ class ChessAI {
     minimax(engine, depth, alpha, beta, isMaximizing) {
         this.positionEvaluations++;
 
+        // Simple transposition-table lookup (key includes turn and board + depth)
+        const key = this.engineKey(engine) + '|' + depth + '|' + (isMaximizing ? '1' : '0');
+        const cached = this.transpositionTable.get(key);
+        if (cached !== undefined) return cached;
+
         // Reached depth limit
         if (depth === 0) {
-            return this.evaluatePosition(engine);
+            const evalScore = this.evaluatePosition(engine);
+            this.transpositionTable.set(key, evalScore);
+            return evalScore;
         }
 
         const moves = engine.getAllMoves(engine.currentTurn);
@@ -104,45 +167,70 @@ class ChessAI {
         if (isMaximizing) {
             let maxScore = -Infinity;
             for (const move of moves) {
-                const engineCopy = engine.clone();
-                engineCopy.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                const score = this.minimax(engineCopy, depth - 1, alpha, beta, false);
+                const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                const score = this.minimax(engine, depth - 1, alpha, beta, false);
+                engine.undoMove(snapshot);
                 maxScore = Math.max(maxScore, score);
                 alpha = Math.max(alpha, score);
                 if (beta <= alpha) break; // Beta cutoff
             }
+            this.transpositionTable.set(key, maxScore);
             return maxScore;
         } else {
             let minScore = Infinity;
             for (const move of moves) {
-                const engineCopy = engine.clone();
-                engineCopy.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                const score = this.minimax(engineCopy, depth - 1, alpha, beta, true);
+                const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                const score = this.minimax(engine, depth - 1, alpha, beta, true);
+                engine.undoMove(snapshot);
                 minScore = Math.min(minScore, score);
                 beta = Math.min(beta, score);
                 if (beta <= alpha) break; // Alpha cutoff
             }
+            this.transpositionTable.set(key, minScore);
             return minScore;
         }
     }
 
     // Order moves to improve alpha-beta pruning effectiveness
     orderMoves(moves, engine) {
+        // MVV-LVA + promotion + center heuristic
         moves.sort((a, b) => {
             let scoreA = 0;
             let scoreB = 0;
 
-            // Prioritize captures
-            const targetA = engine.board[a.toRow][a.toCol];
-            const targetB = engine.board[b.toRow][b.toCol];
-            if (targetA) scoreA += 10;
-            if (targetB) scoreB += 10;
+            const fromA = engine.board[a.fromRow] && engine.board[a.fromRow][a.fromCol];
+            const fromB = engine.board[b.fromRow] && engine.board[b.fromRow][b.fromCol];
 
-            // Prioritize center moves
+            const targetA = engine.board[a.toRow] && engine.board[a.toRow][a.toCol];
+            const targetB = engine.board[b.toRow] && engine.board[b.toRow][b.toCol];
+
+            // Capture priority using victim value minus attacker value (MVV-LVA)
+            if (targetA && fromA) {
+                const victimVal = this.getPieceValue(targetA.piece, a.toRow, a.toCol, targetA.color);
+                const attackerVal = this.getPieceValue(fromA.piece, a.fromRow, a.fromCol, fromA.color);
+                scoreA += 100 + (victimVal - attackerVal);
+            }
+            if (targetB && fromB) {
+                const victimVal = this.getPieceValue(targetB.piece, b.toRow, b.toCol, targetB.color);
+                const attackerVal = this.getPieceValue(fromB.piece, b.fromRow, b.fromCol, fromB.color);
+                scoreB += 100 + (victimVal - attackerVal);
+            }
+
+            // Promotion priority (if attacker is promotable pawn moving to promotion rank)
+            if (fromA && fromA.piece && fromA.piece.promotionRank !== -1) {
+                const promoRank = fromA.color === 'white' ? 0 : 7;
+                if (a.toRow === promoRank) scoreA += 80;
+            }
+            if (fromB && fromB.piece && fromB.piece.promotionRank !== -1) {
+                const promoRank = fromB.color === 'white' ? 0 : 7;
+                if (b.toRow === promoRank) scoreB += 80;
+            }
+
+            // Center control heuristic
             const centerDistA = Math.abs(3.5 - a.toRow) + Math.abs(3.5 - a.toCol);
             const centerDistB = Math.abs(3.5 - b.toRow) + Math.abs(3.5 - b.toCol);
-            scoreA += (7 - centerDistA);
-            scoreB += (7 - centerDistB);
+            scoreA += (7 - centerDistA) * 0.5;
+            scoreB += (7 - centerDistB) * 0.5;
 
             return scoreB - scoreA;
         });
@@ -245,6 +333,25 @@ class ChessAI {
             const j = Math.floor(Math.random() * (i + 1));
             [array[i], array[j]] = [array[j], array[i]];
         }
+    }
+
+    // Lightweight engine position key for transposition table
+    engineKey(engine) {
+        let s = engine.currentTurn[0];
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const cell = engine.board[r][c];
+                if (!cell) {
+                    s += '.';
+                } else {
+                    // piece name, color initial and moved flag
+                    s += `|${cell.piece.name}:${cell.color[0]}:${cell.hasMoved ? '1' : '0'}`;
+                }
+            }
+        }
+        // include lastMove to disambiguate en-passant states
+        if (engine.lastMove) s += `:lm:${engine.lastMove.fromRow},${engine.lastMove.fromCol},${engine.lastMove.toRow},${engine.lastMove.toCol}`;
+        return s;
     }
 }
 

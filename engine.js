@@ -793,6 +793,149 @@ class ChessEngine {
         
         return true;
     }
+
+    // Apply a move without validation and return a snapshot for undo.
+    // The AI will use this for fast in-place search and then call `undoMove(snapshot)`.
+    makeMoveUnsafe(fromRow, fromCol, toRow, toCol) {
+        const snapshot = {
+            fromRow, fromCol, toRow, toCol,
+            fromCell: this.board[fromRow][fromCol] ? { ...this.board[fromRow][fromCol] } : null,
+            toCell: this.board[toRow][toCol] ? { ...this.board[toRow][toCol] } : null,
+            lastMovePrev: this.lastMove ? { ...this.lastMove } : null,
+            pendingPromotionPrev: this.pendingPromotion ? { ...this.pendingPromotion } : null,
+            currentTurnPrev: this.currentTurn,
+            gameOverPrev: this.gameOver,
+            rookSnapshot: null,
+            enPassantCaptured: null
+        };
+
+        const cellData = this.board[fromRow][fromCol];
+        if (!cellData) return snapshot;
+
+        // Determine the exact move data (if available) to handle specials like en-passant / castling
+        const validMoves = this.getValidMoves(fromRow, fromCol);
+        const moveData = validMoves.find(m => m.row === toRow && m.col === toCol) || { type: undefined };
+
+        // Handle en-passant capture
+        if (moveData.type === 'en-passant') {
+            snapshot.enPassantCaptured = {
+                row: moveData.captureRow,
+                col: moveData.captureCol,
+                cell: this.board[moveData.captureRow][moveData.captureCol] ? { ...this.board[moveData.captureRow][moveData.captureCol] } : null
+            };
+            this.board[moveData.captureRow][moveData.captureCol] = null;
+        }
+
+        // Handle castling rook movement
+        if (moveData.type === 'castling-kingside' || moveData.type === 'castling-queenside') {
+            const rookFromCol = moveData.rookFromCol;
+            const rookToCol = moveData.rookToCol;
+            snapshot.rookSnapshot = {
+                row: fromRow,
+                rookFromCol,
+                rookToCol,
+                rookFromCell: this.board[fromRow][rookFromCol] ? { ...this.board[fromRow][rookFromCol] } : null,
+                rookToCell: this.board[fromRow][rookToCol] ? { ...this.board[fromRow][rookToCol] } : null
+            };
+            // Move the rook
+            const rook = this.board[fromRow][rookFromCol];
+            this.board[fromRow][rookToCol] = rook ? { ...rook, hasMoved: true } : null;
+            this.board[fromRow][rookFromCol] = null;
+        }
+
+        // Move the piece
+        this.board[toRow][toCol] = {
+            piece: cellData.piece,
+            color: cellData.color,
+            hasMoved: true
+        };
+        this.board[fromRow][fromCol] = null;
+
+        // Track last move for en passant
+        this.lastMove = {
+            fromRow,
+            fromCol,
+            toRow,
+            toCol,
+            piece: cellData.piece
+        };
+
+        // Handle promotion (automatically resolve choice promotions to first option for search)
+        const promotionRank = cellData.color === 'white' ? 0 : 7;
+        if (cellData.piece.promotionRank !== -1 && toRow === promotionRank) {
+            if (cellData.piece.promotionType === 'choice') {
+                // Auto-promote to first choice for deterministic search
+                const promotionPieces = cellData.piece.promotionPieces || [];
+                if (promotionPieces.length > 0) {
+                    this.board[toRow][toCol].piece = promotionPieces[0];
+                }
+            } else if (cellData.piece.promotionType === 'move-upgrade') {
+                let upgradedMoves = [];
+                if (cellData.piece.upgradeMoves && cellData.piece.upgradeMoves.length > 0) {
+                    upgradedMoves = cellData.piece.upgradeMoves;
+                } else {
+                    const rng = this.seed !== null ? new SeededRandom(this.seed + toRow * 8 + toCol) : null;
+                    const realRng = rng || {next: Math.random};
+                    const bonusRange = PieceGenerator.getUpgradeBonusRange(cellData.piece.moves);
+                    upgradedMoves = PieceGenerator.generateUpgradeMoves(cellData.piece.moves, realRng, bonusRange);
+                }
+
+                const upgradedPiece = new Piece(
+                    cellData.piece.name,
+                    upgradedMoves,
+                    cellData.piece.royal,
+                    cellData.piece.specials,
+                    [],
+                    -1,
+                    null
+                );
+
+                this.board[toRow][toCol].piece = upgradedPiece;
+            }
+        }
+
+        // Switch turns
+        this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
+
+        // Check for checkmate or stalemate
+        if (this.getAllMoves(this.currentTurn).length === 0) {
+            this.gameOver = true;
+        } else {
+            this.gameOver = false;
+        }
+
+        return snapshot;
+    }
+
+    // Undo a move previously applied with makeMoveUnsafe(snapshot)
+    undoMove(snapshot) {
+        if (!snapshot) return;
+
+        const { fromRow, fromCol, toRow, toCol } = snapshot;
+
+        // Restore original from/to cells
+        this.board[fromRow][fromCol] = snapshot.fromCell ? { ...snapshot.fromCell } : null;
+        this.board[toRow][toCol] = snapshot.toCell ? { ...snapshot.toCell } : null;
+
+        // Restore en-passant captured pawn if any
+        if (snapshot.enPassantCaptured) {
+            const ep = snapshot.enPassantCaptured;
+            this.board[ep.row][ep.col] = ep.cell ? { ...ep.cell } : null;
+        }
+
+        // Restore rook state for castling
+        if (snapshot.rookSnapshot) {
+            const r = snapshot.rookSnapshot;
+            this.board[r.row][r.rookFromCol] = r.rookFromCell ? { ...r.rookFromCell } : null;
+            this.board[r.row][r.rookToCol] = r.rookToCell ? { ...r.rookToCell } : null;
+        }
+
+        // Restore metadata
+        this.lastMove = snapshot.lastMovePrev ? { ...snapshot.lastMovePrev } : null;
+        this.pendingPromotion = snapshot.pendingPromotionPrev ? { ...snapshot.pendingPromotionPrev } : null;
+        this.currentTurn = snapshot.currentTurnPrev;
+        this.gameOver = snapshot.gameOverPrev;
+    }
     
     // Complete a pending promotion choice
     completePromotion(pieceIndex) {
