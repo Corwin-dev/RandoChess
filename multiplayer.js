@@ -9,6 +9,12 @@ class MultiplayerClient {
         this.isConnected = false;
         this.pieces = null;
         this.placement = null;
+        // Persistent player identifier for reconnects
+        try {
+            this.playerId = (typeof window !== 'undefined' && window.localStorage) ? window.localStorage.getItem('rando_playerId') : null;
+        } catch (e) {
+            this.playerId = null;
+        }
         // Lifecycle callbacks
         this.onOpen = null; // () => void
         this.onClose = null; // () => void
@@ -39,13 +45,19 @@ class MultiplayerClient {
             console.log('Connected to server');
             this.isConnected = true;
             if (this.onOpen) this.onOpen();
-            
-            // Send pieces to server and join queue
+            // On connect, attempt rejoin if we have a stored playerId. If rejoin
+            // fails, we'll fall back to joining the queue.
             const serializedPieces = PieceSerializer.serialize(pieces);
-            this.ws.send(JSON.stringify({
-                type: 'JOIN_QUEUE',
-                pieces: serializedPieces
-            }));
+            if (this.playerId) {
+                try {
+                    this.ws.send(JSON.stringify({ type: 'REJOIN', playerId: this.playerId }));
+                } catch (e) {
+                    console.warn('Failed to send REJOIN', e);
+                    this.ws.send(JSON.stringify({ type: 'JOIN_QUEUE', pieces: serializedPieces }));
+                }
+            } else {
+                this.ws.send(JSON.stringify({ type: 'JOIN_QUEUE', pieces: serializedPieces }));
+            }
         };
         
         this.ws.onmessage = (event) => {
@@ -71,6 +83,16 @@ class MultiplayerClient {
     }
     
     handleMessage(data) {
+        // Handle assignment of player id from server
+        if (data.type === 'ASSIGN_ID') {
+            try {
+                if (!this.playerId && typeof window !== 'undefined' && window.localStorage) {
+                    window.localStorage.setItem('rando_playerId', data.playerId);
+                    this.playerId = data.playerId;
+                }
+            } catch (e) { /* ignore */ }
+            return;
+        }
         switch(data.type) {
             case 'WAITING':
                 if (this.onMessage) {
@@ -89,7 +111,7 @@ class MultiplayerClient {
                 const deserialized = PieceSerializer.deserialize(data.pieces);
                 
                 if (this.onMatchFound) {
-                    this.onMatchFound(data.color, deserialized, data.placement);
+                    this.onMatchFound(data.color, deserialized, data.placement, data.moveHistory || [], data.currentTurn || 'white');
                 }
                 break;
             }
@@ -111,19 +133,34 @@ class MultiplayerClient {
                 if (this.onOpponentLeft) {
                     this.onOpponentLeft(data);
                 }
-                // If server indicated opponent left unexpectedly (intentional === false),
-                // ask server to remove us from the queue so we are not requeued automatically.
-                if (data.intentional === false) {
-                    try {
-                        this.ws.send(JSON.stringify({ type: 'LEAVE_QUEUE' }));
-                    } catch (e) {
-                        console.warn('Failed to request LEAVE_QUEUE', e);
-                    }
-                }
+                // Server allows rejoin; client should not auto LEAVE_QUEUE here.
                 if (this.onMessage) {
                     this.onMessage('👤❌');
                 }
                 break;
+
+            case 'REJOIN_ACCEPT': {
+                // Server accepted our rejoin; treat like a MATCHED/resume
+                this.sessionId = data.sessionId;
+                this.playerColor = data.color;
+                this.placement = data.placement;
+                const deserialized = PieceSerializer.deserialize(data.pieces);
+                if (this.onMatchFound) {
+                    this.onMatchFound(data.color, deserialized, data.placement, data.moveHistory || [], data.currentTurn || 'white');
+                }
+                break;
+            }
+
+            case 'REJOIN_FAILED': {
+                // Fall back to normal matchmaking — join queue with pieces
+                const serializedPieces = PieceSerializer.serialize(this.pieces);
+                try {
+                    this.ws.send(JSON.stringify({ type: 'JOIN_QUEUE', pieces: serializedPieces }));
+                } catch (e) {
+                    console.warn('Failed to JOIN_QUEUE after REJOIN_FAILED', e);
+                }
+                break;
+            }
 
             case 'REMATCH_STATUS':
                 // { mySelection, opponentSelection }

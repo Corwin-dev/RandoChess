@@ -118,7 +118,7 @@ class RandoChessApp {
             if (this.uiManager) this.uiManager.setConnectionStatus('disconnected');
         };
 
-        this.multiplayerClient.onMatchFound = (color, pieces, placement) => {
+        this.multiplayerClient.onMatchFound = (color, pieces, placement, moveHistory = [], currentTurn = 'white') => {
             console.log('👤', color);
             
             // Update pieces to server's version (ensures both players have same pieces)
@@ -144,6 +144,22 @@ class RandoChessApp {
             });
             
             this.currentController.start(placement, color);
+            // If this was a rejoin/resume, set engine turn and replay move history to reach current state
+            try {
+                if (this.currentController && this.currentController.engine) {
+                    this.currentController.engine.currentTurn = currentTurn;
+                }
+            } catch (e) {}
+
+            if (Array.isArray(moveHistory) && moveHistory.length > 0) {
+                for (const entry of moveHistory) {
+                    try {
+                        if (this.currentController && typeof this.currentController.applyRemoteMove === 'function') {
+                            this.currentController.applyRemoteMove(entry.move);
+                        }
+                    } catch (e) { console.warn('Failed to replay move', e); }
+                }
+            }
             // Clear any permanent "Searching..." status so it doesn't reappear later
             this.uiManager.clearMessage();
             this.uiManager.showMessage(`👤`, 3000);
