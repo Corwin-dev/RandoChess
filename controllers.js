@@ -77,11 +77,166 @@ try {
     if (typeof window !== 'undefined') {
         window.GameController = GameController;
         window.AIGameController = AIGameController;
-        window.MultiplayerGameController = MultiplayerGameController;
     }
 } catch (e) { /* ignore in non-browser env */ }
+export { GameController, AIGameController };
 
-export { GameController, AIGameController, MultiplayerGameController };
+// Hotseat controller: human plays both sides locally (no AI, no networking)
+class HotseatController extends GameController {
+    constructor(pieces, renderer, uiManager, seed = null) {
+        super(pieces, renderer, uiManager, seed);
+    }
+
+    start(placement = null, startingColor = 'white') {
+        // Ensure engine initialized and front-end ready
+        super.start(placement);
+        // Set initial turn
+        try { this.engine.currentTurn = startingColor; } catch (e) {}
+        if (this.uiManager) {
+            this.uiManager.updateTurn(this.engine.currentTurn);
+            this.uiManager.setOpponentStatus('👥');
+        }
+    }
+
+    // Allow clicks regardless of who 'playerColor' is — user controls both sides
+    handleSquareClick(row, col) {
+        if (!this.isActive || this.engine.isGameOver()) return;
+        super.handleSquareClick(row, col);
+    }
+
+    makeMove(fromRow, fromCol, toRow, toCol) {
+        const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
+        if (!success) return;
+
+        this.clearSelection();
+
+        // Handle promotion choices
+        if (this.engine.pendingPromotion) {
+            const { color, promotionPieces } = this.engine.pendingPromotion;
+            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
+                this.engine.completePromotion(pieceIndex);
+                this.render();
+                this.uiManager.updateTurn(this.engine.currentTurn);
+                this.checkGameState();
+            });
+            this.render();
+            return;
+        }
+
+        this.uiManager.updateTurn(this.engine.currentTurn);
+
+        if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('⚠️', 2000);
+        }
+
+        if (this.engine.isGameOver()) {
+            const winner = this.engine.getWinner();
+            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
+            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            this.isActive = false;
+            if (this.uiManager) this.uiManager.stopClock();
+        }
+    }
+
+    checkGameState() {
+        if (this.engine.isGameOver()) {
+            const winner = this.engine.getWinner();
+            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
+            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            this.isActive = false;
+        } else if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('⚠️', 2000);
+        }
+    }
+}
+
+try { if (typeof window !== 'undefined') window.HotseatController = HotseatController; } catch (e) {}
+export { HotseatController };
+
+// Lightweight online controller: talks to server via WebSocket
+class OnlineGameController extends GameController {
+    constructor(pieces, renderer, uiManager, ws, color) {
+        super(pieces, renderer, uiManager, null);
+        this.ws = ws;
+        this.playerColor = color;
+    }
+
+    start(placement = null, playerColor = null) {
+        if (playerColor) this.playerColor = playerColor;
+        this.renderer.setPlayerColor(this.playerColor);
+        super.start(placement);
+        if (this.uiManager) {
+            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
+            this.uiManager.startClock(owner);
+            if (owner !== 'player') this.uiManager.setThinking('');
+        }
+    }
+
+    handleSquareClick(row, col) {
+        if (this.engine.currentTurn !== this.playerColor) return;
+        super.handleSquareClick(row, col);
+    }
+
+    makeMove(fromRow, fromCol, toRow, toCol) {
+        const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
+        if (!success) return;
+        this.clearSelection();
+
+        if (this.engine.pendingPromotion) {
+            const { color, promotionPieces } = this.engine.pendingPromotion;
+            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
+                this.engine.completePromotion(pieceIndex);
+                this.render();
+                this.uiManager.updateTurn(this.engine.currentTurn);
+                // send promotion move
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'MOVE', move: { fromRow, fromCol, toRow, toCol, promotion: pieceIndex }, gameOver: this.engine.isGameOver(), winner: this.engine.getWinner() }));
+                }
+                this.checkGameState();
+            });
+            this.render();
+            return;
+        }
+
+        this.uiManager.updateTurn(this.engine.currentTurn);
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: 'MOVE', move: { fromRow, fromCol, toRow, toCol }, gameOver: this.engine.isGameOver(), winner: this.engine.getWinner() }));
+        }
+
+        if (this.engine.isInCheck(this.engine.currentTurn)) this.uiManager.showMessage('⚠️', 2000);
+
+        if (this.engine.isGameOver()) {
+            const winner = this.engine.getWinner();
+            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
+            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            this.isActive = false;
+            if (this.uiManager) this.uiManager.stopClock();
+        }
+    }
+
+    applyRemoteMove(move) {
+        this.engine.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
+        if (this.engine.pendingPromotion && move.promotion !== undefined) this.engine.completePromotion(move.promotion);
+        this.render();
+        this.uiManager.updateTurn(this.engine.currentTurn);
+        if (this.uiManager) {
+            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
+            this.uiManager.startClock(owner);
+            this.uiManager.setThinking('');
+        }
+        if (this.engine.isInCheck(this.engine.currentTurn)) this.uiManager.showMessage('⚠️', 2000);
+        if (this.engine.isGameOver()) {
+            const winner = this.engine.getWinner();
+            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
+            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            this.isActive = false;
+            if (this.uiManager) this.uiManager.stopClock();
+        }
+    }
+}
+
+try { if (typeof window !== 'undefined') window.OnlineGameController = OnlineGameController; } catch (e) {}
+export { OnlineGameController };
 
 // AI Game Mode Controller
 class AIGameController extends GameController {
@@ -274,145 +429,4 @@ class AIGameController extends GameController {
 }
 
 // Multiplayer Game Mode Controller
-class MultiplayerGameController extends GameController {
-    constructor(pieces, renderer, uiManager, multiplayerClient, color, seed = null) {
-        super(pieces, renderer, uiManager, seed);
-        this.multiplayerClient = multiplayerClient;
-        this.playerColor = null;
-    }
-
-    start(placement = null, playerColor = 'white') {
-        this.playerColor = playerColor;
-        this.renderer.setPlayerColor(this.playerColor);
-        
-        super.start(placement);
-        // Start the clock for whoever's turn it is initially
-        if (this.uiManager) {
-            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
-            this.uiManager.startClock(owner);
-            if (owner !== 'player') this.uiManager.setThinking('');
-        }
-    }
-
-    handleSquareClick(row, col) {
-        // Only allow clicks when it's player's turn
-        if (this.engine.currentTurn !== this.playerColor) return;
-        
-        super.handleSquareClick(row, col);
-    }
-
-    makeMove(fromRow, fromCol, toRow, toCol) {
-        const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
-        
-        if (!success) return;
-        
-        this.clearSelection();
-        
-        // Check for pending promotion (player's choice)
-        if (this.engine.pendingPromotion) {
-            const { color, promotionPieces } = this.engine.pendingPromotion;
-            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
-                this.engine.completePromotion(pieceIndex);
-                this.render();
-                this.uiManager.updateTurn(this.engine.currentTurn);
-                
-                // Send promotion info to server (as a separate message if needed)
-                this.multiplayerClient.sendMove({
-                    fromRow: fromRow,
-                    fromCol: fromCol,
-                    toRow: toRow,
-                    toCol: toCol,
-                    promotion: pieceIndex
-                }, this.engine.isGameOver(), this.engine.getWinner());
-                
-                this.checkGameState();
-            });
-            this.render();
-            return;
-        }
-        
-        this.uiManager.updateTurn(this.engine.currentTurn);
-        // Update clock for the next player (local player vs opponent)
-        if (this.uiManager) {
-            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
-            this.uiManager.startClock(owner);
-            this.uiManager.setThinking('');
-        }
-        
-        // Send move to server
-        this.multiplayerClient.sendMove({
-            fromRow: fromRow,
-            fromCol: fromCol,
-            toRow: toRow,
-            toCol: toCol
-        }, this.engine.isGameOver(), this.engine.getWinner());
-        
-        // Show check status
-        if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('⚠️', 2000);
-        }
-        
-        if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') {
-                this.uiManager.showMessage('🤝', 0);
-            } else {
-                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
-            }
-            this.isActive = false;
-            if (this.uiManager) this.uiManager.stopClock();
-            return;
-        }
-    }
-    
-    checkGameState() {
-        if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') {
-                this.uiManager.showMessage('🤝', 0);
-            } else {
-                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
-            }
-            this.isActive = false;
-        } else if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('⚠️', 2000);
-        }
-    }
-
-    // Apply move from opponent
-    applyRemoteMove(move) {
-        this.engine.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
-        
-        // Handle opponent's promotion choice
-        if (this.engine.pendingPromotion && move.promotion !== undefined) {
-            this.engine.completePromotion(move.promotion);
-        }
-        
-        this.render();
-        this.uiManager.updateTurn(this.engine.currentTurn);
-        if (this.uiManager) {
-            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
-            this.uiManager.startClock(owner);
-            this.uiManager.setThinking('');
-        }
-        
-        // Show check status
-        if (this.engine.isInCheck(this.engine.currentTurn)) {
-            this.uiManager.showMessage('⚠️', 2000);
-        }
-        
-        if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') {
-                this.uiManager.showMessage('🤝', 0);
-            } else {
-                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
-            }
-            this.isActive = false;
-            if (this.uiManager && this instanceof MultiplayerGameController) {
-                this.uiManager.showEndmatchControls();
-            }
-            if (this.uiManager) this.uiManager.stopClock();
-        }
-    }
-}
+// Multiplayer support removed — MultiplayerGameController deleted

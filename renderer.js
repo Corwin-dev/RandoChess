@@ -285,6 +285,9 @@ class UIManager {
         this.aiMatchBtn = document.getElementById('ai-match-btn');
         this.promotionDialog = document.getElementById('promotion-dialog');
         this.promotionChoices = document.getElementById('promotion-choices');
+        this.modePlayAIButton = document.getElementById('btn-play-ai');
+        this.modeOTBButton = document.getElementById('btn-play-otb');
+        this.modeOnlineButton = document.getElementById('btn-play-online');
         this.resultOverlay = document.getElementById('result-overlay');
         this.resultEmoji = document.getElementById('result-emoji');
         this.resultTitle = document.getElementById('result-title');
@@ -625,6 +628,18 @@ class UIManager {
 
     onRematchKeepClick(callback) {
         if (this.rematchKeepBtn) this.rematchKeepBtn.addEventListener('click', callback);
+    }
+
+    onModePlayAIClick(callback) {
+        if (this.modePlayAIButton) this.modePlayAIButton.addEventListener('click', callback);
+    }
+
+    onModeOTBClick(callback) {
+        if (this.modeOTBButton) this.modeOTBButton.addEventListener('click', callback);
+    }
+
+    onModeOnlineClick(callback) {
+        if (this.modeOnlineButton) this.modeOnlineButton.addEventListener('click', callback);
     }
 
     onNewOpponentClick(callback) {

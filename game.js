@@ -1,10 +1,9 @@
 ﻿// ===== RandoChess - Main Application =====
 // Coordinates all modules and manages application state
 
-import { PieceGenerator } from './pieces.js';
+import { PieceGenerator } from './Generator.js';
 import { BoardRenderer, UIManager } from './renderer.js';
-import { MultiplayerClient } from './multiplayer.js';
-import { AIGameController, MultiplayerGameController } from './controllers.js';
+import { AIGameController, HotseatController, OnlineGameController } from './controllers.js';
 
 class RandoChessApp {
     constructor() {
@@ -23,20 +22,18 @@ class RandoChessApp {
         this.renderer = new BoardRenderer(document.getElementById('board'));
         this.uiManager = new UIManager();
         
-        // Set up multiplayer client
-        this.multiplayerClient = new MultiplayerClient();
-        this.setupMultiplayerCallbacks();
-        
-        // Start compulsory multiplayer search by default (user may cancel)
+        // Wire mode buttons
         if (this.uiManager) {
-            this.uiManager.setOpponentStatus('⏳');
-            // Register handlers for search and cancel actions
-            this.uiManager.onSearchClick(() => this.startMultiplayerSearch());
-            this.uiManager.onCancelClick(() => this.cancelMultiplayerSearch());
+            this.uiManager.onModePlayAIClick(() => this.startAIGame());
+            this.uiManager.onModeOTBClick(() => this.startOTBGame());
+            this.uiManager.onModeOnlineClick(() => this.startOnlineSearch());
+            this.uiManager.setOpponentStatus('🤖');
+            // Attach cancel to cancelOnlineSearch so user can cancel searching
+            this.uiManager.onCancelClick(() => this.cancelOnlineSearch());
         }
 
-        // Begin matchmaking immediately
-        this.startMultiplayerSearch();
+        // Start default AI game
+        this.startAIGame();
     }
 
     // Seed controls and seed display removed; seed remains internal to PieceGenerator
@@ -67,6 +64,101 @@ class RandoChessApp {
             this.uiManager.showCancelButton();
 
         }
+    }
+
+    startOTBGame() {
+        if (this.currentController) this.currentController.stop();
+        this.currentController = new HotseatController(this.pieces, this.renderer, this.uiManager, null);
+        this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
+        this.currentController.start(null, 'white');
+        if (this.uiManager) {
+            this.uiManager.setOpponentStatus('👥');
+            this.uiManager.showSearchButton && this.uiManager.showSearchButton();
+        }
+    }
+
+    startOnlineSearch() {
+        // Start local AI while showing searching status — multiplayer server is currently disabled/stubbed
+        if (this.uiManager) {
+            this.uiManager.setOpponentStatus('⏳');
+            this.uiManager.setGameStatus('searching');
+            this.uiManager.showCancelButton();
+            this.uiManager.setThinking('ready');
+        }
+
+        // Establish WebSocket connection to server and join queue
+        try {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            this.onlineSocket = new WebSocket(wsUrl);
+
+            this.onlineSocket.onopen = () => {
+                const serializedPieces = PieceSerializer.serialize(this.pieces);
+                this.onlineSocket.send(JSON.stringify({ type: 'JOIN_QUEUE', pieces: serializedPieces }));
+            };
+
+            this.onlineSocket.onmessage = (ev) => {
+                let data = null;
+                try { data = JSON.parse(ev.data); } catch (e) { return; }
+                if (!data || !data.type) return;
+
+                if (data.type === 'WAITING') {
+                    if (this.uiManager) this.uiManager.showMessage(data.message || '⏳', 2000);
+                } else if (data.type === 'MATCHED') {
+                    // Deserialize pieces from server
+                    const deserialized = PieceSerializer.deserialize(data.pieces);
+                    this.pieces = deserialized;
+                    // Stop any local controller
+                    if (this.currentController) this.currentController.stop();
+
+                    // Start online controller
+                    this.currentController = new OnlineGameController(this.pieces, this.renderer, this.uiManager, this.onlineSocket, data.color);
+                    this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
+                    this.currentController.start(data.placement, data.color);
+                    if (this.uiManager) {
+                        this.uiManager.clearMessage();
+                        this.uiManager.setOpponentStatus('👤');
+                        this.uiManager.setConnectionStatus('connected');
+                    }
+                } else if (data.type === 'MOVE') {
+                    if (this.currentController && typeof this.currentController.applyRemoteMove === 'function') {
+                        this.currentController.applyRemoteMove(data.move);
+                    }
+                } else if (data.type === 'OPPONENT_LEFT') {
+                    if (this.uiManager) {
+                        this.uiManager.showMessage('👤❌➡️🤖', 3000);
+                        this.uiManager.setOpponentStatus('🤖');
+                        this.uiManager.setConnectionStatus('disconnected');
+                        this.uiManager.setGameStatus('idle');
+                    }
+                    setTimeout(() => this.startAIGame(), 500);
+                }
+            };
+
+            this.onlineSocket.onerror = (e) => { if (this.uiManager) this.uiManager.showMessage('⚠️', 2000); };
+
+            this.onlineSocket.onclose = () => {
+                if (this.uiManager) this.uiManager.setConnectionStatus('disconnected');
+            };
+
+            // Start AI locally while searching so user can play until matched
+            if (!(this.currentController instanceof AIGameController)) this.startAIGame();
+        } catch (e) {
+            console.warn('Failed to start online search', e);
+            if (!(this.currentController instanceof AIGameController)) this.startAIGame();
+        }
+    }
+
+    cancelOnlineSearch() {
+        // Cancel search and ensure AI game is running
+        if (this.uiManager) {
+            this.uiManager.setGameStatus('idle');
+            this.uiManager.setOpponentStatus('🤖');
+            this.uiManager.showSearchButton();
+            this.uiManager.setThinking('idle');
+            this.uiManager.setClock('00:00');
+        }
+        this.startAIGame();
     }
 
     startMultiplayerSearch() {

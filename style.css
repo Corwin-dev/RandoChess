@@ -180,6 +180,13 @@ button:hover {
     cursor: pointer;
 }
 
+.mode-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px;
+}
+
 .multiplayer-controls {
     display: flex;
     gap: 10px;
