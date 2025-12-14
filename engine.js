@@ -1,5 +1,7 @@
 // ===== Core Chess Engine =====
 // Pure game logic with no UI or network dependencies
+import { PieceGenerator } from './Generator.js';
+import { Move, Piece, Special } from './pieces.js';
 
 class ChessEngine {
     constructor(pieces, seed = null) {
@@ -154,39 +156,9 @@ class ChessEngine {
 
     // Generate placement configuration
     generatePlacement() {
-        // Create RNG for placement (use seed if available)
-        const rng = this.seed !== null ? new SeededRandom(this.seed + 1000000) : null;
-        const random = rng ? () => rng.next() : Math.random;
-        
-        // Find the strongest non-royal piece (most moves)
-        // pieces[0] = royal, pieces[1-4] = random non-royal, pieces[5] = pawn
-        let strongestIndex = 1;
-        let maxMoves = this.pieces[1].moves.length;
-        for (let i = 2; i <= 4; i++) {
-            if (this.pieces[i].moves.length > maxMoves) {
-                maxMoves = this.pieces[i].moves.length;
-                strongestIndex = i;
-            }
-        }
-
-        // Get remaining pieces for symmetric placement (exclude strongest)
-        const remainingPieces = [];
-        for (let i = 1; i <= 4; i++) {
-            if (i !== strongestIndex) {
-                remainingPieces.push(i);
-            }
-        }
-        
-        // Shuffle for random placement using seeded RNG
-        for (let i = remainingPieces.length - 1; i > 0; i--) {
-            const j = Math.floor(random() * (i + 1));
-            [remainingPieces[i], remainingPieces[j]] = [remainingPieces[j], remainingPieces[i]];
-        }
-        
-        return {
-            remainingPieces: [...remainingPieces],
-            strongestIndex: strongestIndex
-        };
+        // Use centralized placement generator so server and engine agree
+        const placementSeed = this.seed !== null ? (this.seed + 1000000) : null;
+        return PieceGenerator.generatePlacement(this.pieces, placementSeed);
     }
 
 

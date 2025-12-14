@@ -14,60 +14,37 @@ app.use(express.static(path.resolve(__dirname)));
 const waitingQueue = [];
 const gameSessions = new Map();
 
+const { PieceGenerator } = require('./Generator.js');
+
 function generateSessionId() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-function generatePlacement(pieces) {
-    // Basic placement generator: choose strongest index and shuffle remaining
-    let pawnIndex = pieces.findIndex(p => (p && (p.promotionType === 'choice' || (p.specials && p.specials.some(s => s.type === 'enPassant')))));
-    if (pawnIndex === -1) pawnIndex = pieces.length - 1;
-
-    const candidates = [];
-    for (let i = 1; i < pieces.length; i++) if (i !== pawnIndex) candidates.push(i);
-
-    let strongestIndex = candidates[0] || 1;
-    let maxMoves = (pieces[strongestIndex] && pieces[strongestIndex].moves) ? pieces[strongestIndex].moves.length : 0;
-    for (const i of candidates) {
-        const movesLen = (pieces[i] && pieces[i].moves) ? pieces[i].moves.length : 0;
-        if (movesLen > maxMoves) { maxMoves = movesLen; strongestIndex = i; }
-    }
-
-    const remainingPieces = candidates.filter(i => i !== strongestIndex);
-    for (let i = remainingPieces.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [remainingPieces[i], remainingPieces[j]] = [remainingPieces[j], remainingPieces[i]];
-    }
-
-    const pickVariant = () => { const r = Math.random(); if (r < 0.12) return 'orthogonal'; if (r < 0.24) return 'diagonal'; return 'normal'; };
-
-    return { remainingPieces, strongestIndex, kingVariants: { white: pickVariant(), black: pickVariant() } };
-}
-
-function matchPlayer(ws, pieces) {
+function matchPlayer(ws, pieces, seed = null) {
     if (waitingQueue.length > 0) {
         const waiting = waitingQueue.shift();
         const selectedPieces = waiting.pieces || pieces;
+        const selectedSeed = (typeof waiting.seed !== 'undefined' && waiting.seed !== null) ? waiting.seed : (seed || null);
         if (!selectedPieces) {
             try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ERROR', message: 'Invalid pieces' })); } catch (e) {}
             return;
         }
 
         const sessionId = generateSessionId();
-        const placement = generatePlacement(selectedPieces);
+        const placement = PieceGenerator.generatePlacement(selectedPieces, selectedSeed);
         const colors = Math.random() < 0.5 ? ['white', 'black'] : ['black', 'white'];
 
         const session = { sessionId, pieces: selectedPieces, placement, players: [waiting.ws, ws] };
         gameSessions.set(sessionId, session);
         waiting.ws.sessionId = sessionId; ws.sessionId = sessionId;
 
-        const msg0 = { type: 'MATCHED', color: colors[0], sessionId, pieces: selectedPieces, placement };
-        const msg1 = { type: 'MATCHED', color: colors[1], sessionId, pieces: selectedPieces, placement };
+        const msg0 = { type: 'MATCHED', color: colors[0], sessionId, pieces: selectedPieces, placement, seed: selectedSeed };
+        const msg1 = { type: 'MATCHED', color: colors[1], sessionId, pieces: selectedPieces, placement, seed: selectedSeed };
 
         try { if (waiting.ws.readyState === WebSocket.OPEN) waiting.ws.send(JSON.stringify(msg0)); } catch (e) {}
         try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg1)); } catch (e) {}
     } else {
-        waitingQueue.push({ ws, pieces });
+        waitingQueue.push({ ws, pieces, seed });
         try { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'WAITING', message: '⏳' })); } catch (e) {}
     }
 }
@@ -82,7 +59,7 @@ wss.on('connection', (ws) => {
         if (!data || !data.type) return;
 
         if (data.type === 'JOIN_QUEUE') {
-            matchPlayer(ws, data.pieces || null);
+            matchPlayer(ws, data.pieces || null, (typeof data.seed !== 'undefined') ? data.seed : null);
         } else if (data.type === 'LEAVE_QUEUE') {
             const idx = waitingQueue.findIndex(item => item.ws === ws);
             if (idx !== -1) waitingQueue.splice(idx, 1);

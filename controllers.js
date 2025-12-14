@@ -155,8 +155,8 @@ export { HotseatController };
 
 // Lightweight online controller: talks to server via WebSocket
 class OnlineGameController extends GameController {
-    constructor(pieces, renderer, uiManager, ws, color) {
-        super(pieces, renderer, uiManager, null);
+    constructor(pieces, renderer, uiManager, ws, color, seed = null) {
+        super(pieces, renderer, uiManager, seed);
         this.ws = ws;
         this.playerColor = color;
     }

@@ -288,6 +288,8 @@ class UIManager {
         this.modePlayAIButton = document.getElementById('btn-play-ai');
         this.modeOTBButton = document.getElementById('btn-play-otb');
         this.modeOnlineButton = document.getElementById('btn-play-online');
+        this.seedInput = document.getElementById('seed-input');
+        this.seedRollBtn = document.getElementById('seed-roll-btn');
         this.resultOverlay = document.getElementById('result-overlay');
         this.resultEmoji = document.getElementById('result-emoji');
         this.resultTitle = document.getElementById('result-title');
@@ -299,6 +301,8 @@ class UIManager {
         this.clockOwner = null; // 'player'|'ai'|'opponent'
         this.timeControl = { base: 300, inc: 15 };
         this.remaining = { player: this.timeControl.base, opponent: this.timeControl.base, ai: this.timeControl.base };
+
+        // Seed is shown only in the input; no separate HUD/copy button.
     }
 
     // Game status bubble (separate from low-level connection status)
@@ -633,6 +637,20 @@ class UIManager {
     onModePlayAIClick(callback) {
         if (this.modePlayAIButton) this.modePlayAIButton.addEventListener('click', callback);
     }
+
+    onSeedRollClick(callback) {
+        if (this.seedRollBtn) this.seedRollBtn.addEventListener('click', callback);
+    }
+
+    getSeedInputValue() {
+        return this.seedInput ? this.seedInput.value : '';
+    }
+
+    setSeedInputValue(v) {
+        if (this.seedInput) this.seedInput.value = String(v || '');
+    }
+
+    // Seed is shown only in the input; no separate HUD/copy button.
 
     onModeOTBClick(callback) {
         if (this.modeOTBButton) this.modeOTBButton.addEventListener('click', callback);

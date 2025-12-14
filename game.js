@@ -15,8 +15,17 @@ class RandoChessApp {
     }
 
     initialize() {
-        // Generate initial pieces (seed is internal/hidden)
-        this.pieces = PieceGenerator.generateRandomPieces();
+        // Generate initial pieces. Allow seed from URL query `?seed=NUMBER` or via UI.
+        const urlParams = new URLSearchParams(window.location.search || '');
+        const seedParam = urlParams.get('seed');
+        const seed = seedParam ? Number(seedParam) : null;
+        this.seed = seed || null;
+        this.pieces = PieceGenerator.generateRandomPieces(this.seed);
+        // If no seed was provided, the generator chose one; read it back so
+        // the UI can display the actual seed used.
+        if (this.seed === null && this.pieces && typeof this.pieces.__seed !== 'undefined') {
+            this.seed = this.pieces.__seed;
+        }
         
         // Set up UI
         this.renderer = new BoardRenderer(document.getElementById('board'));
@@ -30,10 +39,50 @@ class RandoChessApp {
             this.uiManager.setOpponentStatus('🤖');
             // Attach cancel to cancelOnlineSearch so user can cancel searching
             this.uiManager.onCancelClick(() => this.cancelOnlineSearch());
+            // Seed control: apply seed from input (or roll a new seed when blank)
+            this.uiManager.onSeedRollClick(() => {
+                const originalVal = this.uiManager.getSeedInputValue();
+                let seedVal = null;
+                if (originalVal && originalVal.trim().length > 0) {
+                    // try parse as number, fall back to hashing string
+                    const n = Number(originalVal);
+                    seedVal = Number.isFinite(n) ? n : this.hashStringToSeed(originalVal);
+                } else {
+                    seedVal = Date.now() % 1000000;
+                    // For rolled seeds, show the numeric seed in the input
+                    this.uiManager.setSeedInputValue(seedVal);
+                }
+
+                this.seed = seedVal;
+                this.pieces = PieceGenerator.generateRandomPieces(seedVal);
+
+                // Preserve the user's exact input text when they typed one.
+                // Only overwrite the input when it was originally blank (we rolled a seed).
+                if (!originalVal || originalVal.trim().length === 0) {
+                    if (this.uiManager) this.uiManager.setSeedInputValue(this.seed);
+                }
+
+                // restart the current view/game with the new pieces (start AI by default)
+                this.startAIGame();
+            });
+            // If there was a seed from the URL, show it in the input
+            if (this.seed) {
+                this.uiManager.setSeedInputValue(this.seed);
+            }
         }
 
         // Start default AI game
         this.startAIGame();
+    }
+
+    hashStringToSeed(s) {
+        // Simple deterministic string -> integer hash (32-bit unsigned)
+        let h = 2166136261 >>> 0;
+        for (let i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = Math.imul(h, 16777619) >>> 0;
+        }
+        return h % 1000000;
     }
 
     // Seed controls and seed display removed; seed remains internal to PieceGenerator
@@ -50,7 +99,7 @@ class RandoChessApp {
             this.renderer,
             this.uiManager,
             difficulty,
-            null
+            this.seed
         );
         
         this.renderer.attachEventListener((row, col) => {
@@ -68,7 +117,7 @@ class RandoChessApp {
 
     startOTBGame() {
         if (this.currentController) this.currentController.stop();
-        this.currentController = new HotseatController(this.pieces, this.renderer, this.uiManager, null);
+        this.currentController = new HotseatController(this.pieces, this.renderer, this.uiManager, this.seed);
         this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
         this.currentController.start(null, 'white');
         if (this.uiManager) {
@@ -94,7 +143,7 @@ class RandoChessApp {
 
             this.onlineSocket.onopen = () => {
                 const serializedPieces = PieceSerializer.serialize(this.pieces);
-                this.onlineSocket.send(JSON.stringify({ type: 'JOIN_QUEUE', pieces: serializedPieces }));
+                this.onlineSocket.send(JSON.stringify({ type: 'JOIN_QUEUE', pieces: serializedPieces, seed: this.seed }));
             };
 
             this.onlineSocket.onmessage = (ev) => {
@@ -111,8 +160,9 @@ class RandoChessApp {
                     // Stop any local controller
                     if (this.currentController) this.currentController.stop();
 
-                    // Start online controller
-                    this.currentController = new OnlineGameController(this.pieces, this.renderer, this.uiManager, this.onlineSocket, data.color);
+                    // Start online controller (pass seed if provided)
+                    if (data.seed) this.seed = data.seed;
+                    this.currentController = new OnlineGameController(this.pieces, this.renderer, this.uiManager, this.onlineSocket, data.color, this.seed);
                     this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
                     this.currentController.start(data.placement, data.color);
                     if (this.uiManager) {

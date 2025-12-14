@@ -20,6 +20,15 @@
             <button id="btn-play-ai" class="mode-btn" aria-label="Play Against AI">🤖</button>
             <button id="btn-play-otb" class="mode-btn" aria-label="Play Over The Board">👥</button>
             <button id="btn-play-online" class="mode-btn" aria-label="Play Online">🌐</button>
+            <div class="seed-controls">
+                <input id="seed-input" type="text" placeholder="seed (optional)" aria-label="Seed input" />
+                <button id="seed-roll-btn" class="mode-btn" aria-label="Apply seed">🎲</button>
+            </div>
+        
+            <div id="seed-hud" class="seed-hud">
+                <span id="seed-value" class="seed-value"></span>
+                <button id="seed-copy-btn" class="seed-copy" aria-label="Copy seed">📋</button>
+            </div>
         </div>
         <div id="board-container">
             <div id="board"></div>
@@ -29,6 +38,7 @@
                 </div>
             </div>
         </div>
+        
     </div>
     <!-- Status HUD moved into #opponent-status above the board -->
     <!-- End-of-match controls (hidden until game over) -->

@@ -233,6 +233,49 @@ class PieceGenerator {
             royalMoves.push(new Move(step, null, 1, 'prohibited', false));
         }
 
+        // Allow king to have the special length-2 jumps ([2,0], [0,2], [2,2])
+        // but do NOT give the king any double-distance (distance=2) sliding moves.
+        try {
+            const allSteps = [];
+            for (const m of royalMoves) {
+                if (m.capture === 'required') continue;
+                allSteps.push(...m.getSteps());
+            }
+
+            const absHas = (ax, ay) => allSteps.some(([sx, sy]) => Math.abs(sx) === ax && Math.abs(sy) === ay);
+            const jumpCandidates = [[2, 0], [0, 2], [2, 2]];
+
+            for (const [jx, jy] of jumpCandidates) {
+                const interAx = Math.abs(jx / 2);
+                const interAy = Math.abs(jy / 2);
+
+                const interPresent = absHas(interAx, interAy);
+                const jumpPresent = absHas(Math.abs(jx), Math.abs(jy));
+
+                if (!interPresent && !jumpPresent) {
+                    let symR = (Math.abs(jx) === Math.abs(jy)) ? '8way' : '4way';
+                    royalMoves.push(new Move([jx, jy], symR, 1, 'required', false));
+                }
+
+                // if a jump exists, remove intermediary single-step moves
+                const tmpSteps = [];
+                for (const m of royalMoves) {
+                    if (m.capture === 'required') continue;
+                    tmpSteps.push(...m.getSteps());
+                }
+                const nowJumpPresent = tmpSteps.some(([sx, sy]) => Math.abs(sx) === Math.abs(jx) && Math.abs(sy) === Math.abs(jy));
+                if (nowJumpPresent) {
+                    for (let i = royalMoves.length - 1; i >= 0; i--) {
+                        const m = royalMoves[i];
+                        const steps = m.getSteps();
+                        if (steps.some(([sx, sy]) => Math.abs(sx) === interAx && Math.abs(sy) === interAy)) {
+                            royalMoves.splice(i, 1);
+                        }
+                    }
+                }
+            }
+        } catch (e) {}
+
         const royalSymbol = this.selectSymbolForPiece(royalMoves, true, false, usedSymbols);
         usedSymbols.add(royalSymbol);
         
@@ -250,7 +293,7 @@ class PieceGenerator {
         pieces.push(royal);
         usedSignatures.add(pieceSignature(royal));
 
-        const n = 1 + Math.floor(rng.next() * 2);
+        const n = 2 + Math.floor(rng.next() * 2);
 
         const createNonRoyal = (moves) => {
             const symbol = this.selectSymbolForPiece(moves, false, false, usedSymbols, rng);
@@ -479,6 +522,63 @@ class PieceGenerator {
                     m.symmetry = 'Horizontal';
                 }
 
+                // Flower special: allow orthogonal/diagonal length-2 jumps
+                // ([2,0], [0,2], [2,2]) only when the intermediate square
+                // ([1,0], [0,1], [1,1]) is NOT present in the moveset.
+                // If a jump is present, remove any intermediary step to keep
+                // the moveset consistent (no both-step-and-jump).
+                try {
+                    const allSteps = [];
+                    for (const m of candidate.moves) {
+                        if (m.capture === 'required') continue;
+                        allSteps.push(...m.getSteps());
+                    }
+
+                    const absHas = (ax, ay) => allSteps.some(([sx, sy]) => Math.abs(sx) === ax && Math.abs(sy) === ay);
+
+                    const jumpCandidates = [[2, 0], [0, 2], [2, 2]];
+                    // Prefer existing symmetry on the candidate, else choose by vector
+                    const existingSymmetry = candidate.moves.find(m => m.symmetry === '8way') ? '8way' : (candidate.moves.find(m => m.symmetry === '4way') ? '4way' : null);
+                    for (const [jx, jy] of jumpCandidates) {
+                        const interAx = Math.abs(jx / 2);
+                        const interAy = Math.abs(jy / 2);
+
+                        const interPresent = absHas(interAx, interAy);
+                        const jumpPresent = absHas(Math.abs(jx), Math.abs(jy));
+
+                        if (!interPresent && !jumpPresent) {
+                            let sym = existingSymmetry;
+                            if (!sym) sym = (Math.abs(jx) === Math.abs(jy)) ? '8way' : '4way';
+                            candidate.moves.push(new Move([jx, jy], sym, 1, 'required', false));
+                        }
+
+                        // if jump now present, ensure intermediary is removed
+                        if (!jumpPresent) {
+                            // recompute presence after potential addition
+                            const tmpSteps = [];
+                            for (const m of candidate.moves) {
+                                if (m.capture === 'required') continue;
+                                tmpSteps.push(...m.getSteps());
+                            }
+                            if (tmpSteps.some(([sx, sy]) => Math.abs(sx) === Math.abs(jx) && Math.abs(sy) === Math.abs(jy))) {
+                                // remove any moves that produce the intermediary step
+                                candidate.moves = candidate.moves.filter(m => {
+                                    const steps = m.getSteps();
+                                    return !steps.some(([sx, sy]) => Math.abs(sx) === interAx && Math.abs(sy) === interAy);
+                                });
+                            }
+                        } else {
+                            // if jump already existed, remove intermediary moves
+                            candidate.moves = candidate.moves.filter(m => {
+                                const steps = m.getSteps();
+                                return !steps.some(([sx, sy]) => Math.abs(sx) === interAx && Math.abs(sy) === interAy);
+                            });
+                        }
+                    }
+                } catch (e) {
+                    // harmless if something unexpected happens; keep original candidate
+                }
+
                 if (this.isDirectionallyRestricted(candidate.moves)) {
                     candidate.promotionRank = this.getFarthestReachableRank(candidate.moves);
                     candidate.promotionType = 'move-upgrade';
@@ -505,6 +605,47 @@ class PieceGenerator {
                 for (const m of flower.moves) {
                     m.symmetry = 'Horizontal';
                 }
+                // Flower special (fallback): allow length-2 orth/diag jumps and
+                // remove intermediary steps if the jump is present.
+                try {
+                    const allSteps = [];
+                    for (const m of flower.moves) {
+                        if (m.capture === 'required') continue;
+                        allSteps.push(...m.getSteps());
+                    }
+
+                    const absHas = (ax, ay) => allSteps.some(([sx, sy]) => Math.abs(sx) === ax && Math.abs(sy) === ay);
+                    const jumpCandidates = [[2, 0], [0, 2], [2, 2]];
+
+                    for (const [jx, jy] of jumpCandidates) {
+                        const interAx = Math.abs(jx / 2);
+                        const interAy = Math.abs(jy / 2);
+
+                        const interPresent = absHas(interAx, interAy);
+                        const jumpPresent = absHas(Math.abs(jx), Math.abs(jy));
+
+                        if (!interPresent && !jumpPresent) {
+                            const existingSymmetryF = flower.moves.find(m => m.symmetry === '8way') ? '8way' : (flower.moves.find(m => m.symmetry === '4way') ? '4way' : null);
+                            let symF = existingSymmetryF;
+                            if (!symF) symF = (Math.abs(jx) === Math.abs(jy)) ? '8way' : '4way';
+                            flower.moves.push(new Move([jx, jy], symF, 1, 'required', false));
+                        }
+
+                        // if jump exists (now), remove intermediary moves
+                        const tmpSteps = [];
+                        for (const m of flower.moves) {
+                            if (m.capture === 'required') continue;
+                            tmpSteps.push(...m.getSteps());
+                        }
+                        const nowJumpPresent = tmpSteps.some(([sx, sy]) => Math.abs(sx) === Math.abs(jx) && Math.abs(sy) === Math.abs(jy));
+                        if (nowJumpPresent) {
+                            flower.moves = flower.moves.filter(m => {
+                                const steps = m.getSteps();
+                                return !steps.some(([sx, sy]) => Math.abs(sx) === interAx && Math.abs(sy) === interAy);
+                            });
+                        }
+                    }
+                } catch (e) {}
                 if (this.isDirectionallyRestricted(flower.moves)) {
                     flower.promotionRank = this.getFarthestReachableRank(flower.moves);
                     flower.promotionType = 'move-upgrade';
@@ -567,6 +708,10 @@ class PieceGenerator {
             'choice'
         );
         pieces.push(pawn);
+
+        // Expose the actual seed used for generation so callers (UI, server)
+        // can display/share it even when `seed` was not provided.
+        try { pieces.__seed = seed; } catch (e) {}
 
         return pieces;
     }
@@ -723,6 +868,38 @@ class PieceGenerator {
         }
         
         return moves;
+    }
+
+    static generatePlacement(pieces, rng = null) {
+        // Support passing either a SeededRandom-like object or a numeric seed.
+        if (typeof rng === 'number') rng = new SeededRandom(rng);
+        const random = (rng && typeof rng.next === 'function') ? () => rng.next() : Math.random;
+        // Basic placement generator: choose strongest index and shuffle remaining
+        let pawnIndex = pieces.findIndex(p => (p && (p.promotionType === 'choice' || (p.specials && p.specials.some(s => s.type === 'enPassant')))));
+        if (pawnIndex === -1) pawnIndex = pieces.length - 1;
+
+        const candidates = [];
+        for (let i = 1; i < pieces.length; i++) if (i !== pawnIndex) candidates.push(i);
+
+        let strongestIndex = candidates[0] || 1;
+        let maxMoves = (pieces[strongestIndex] && pieces[strongestIndex].moves) ? pieces[strongestIndex].moves.length : 0;
+        for (const i of candidates) {
+            const movesLen = (pieces[i] && pieces[i].moves) ? pieces[i].moves.length : 0;
+            if (movesLen > maxMoves) { maxMoves = movesLen; strongestIndex = i; }
+        }
+
+        const remainingPieces = candidates.filter(i => i !== strongestIndex);
+        for (let i = remainingPieces.length - 1; i > 0; i--) {
+            const j = Math.floor(random() * (i + 1));
+            [remainingPieces[i], remainingPieces[j]] = [remainingPieces[j], remainingPieces[i]];
+        }
+
+        const pickVariant = () => { const r = random(); if (r < 0.12) return 'orthogonal'; if (r < 0.24) return 'diagonal'; return 'normal'; };
+
+        // Ensure both kings receive the same variant so opposing royals
+        // always have identical base movesets.
+        const chosenKingVariant = pickVariant();
+        return { remainingPieces, strongestIndex, kingVariants: { white: chosenKingVariant, black: chosenKingVariant } };
     }
 
     static createMovementPatternIcon(piece, size = 80, color = 'white', playerPerspective = 'white', isPromotionSquare = false, defeated = false) {

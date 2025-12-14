@@ -226,6 +226,7 @@ footer a:hover {
     width: 600px;
     height: 600px;
     margin: 0 auto;
+    margin-bottom: 30px;
     overflow: visible;
 }
 
