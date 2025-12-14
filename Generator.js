@@ -1,4 +1,4 @@
-const { Move, Piece, Special } = require('./pieces.js');
+import { Move, Piece, Special } from './pieces.js';
 
 // Seeded Random Number Generator (using mulberry32)
 class SeededRandom {
@@ -1114,10 +1114,13 @@ class PieceGenerator {
     }
 }
 
-// Export
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports.PieceGenerator = PieceGenerator;
-}
+// Expose `PieceGenerator` on `window` for non-module consumers
+try {
+    if (typeof window !== 'undefined') window.PieceGenerator = PieceGenerator;
+} catch (e) {}
+
+// Named export for ES module consumers (browser `import { PieceGenerator } from './Generator.js'`)
+export { PieceGenerator };
 
 try {
     if (typeof window !== 'undefined') {
