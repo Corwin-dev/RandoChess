@@ -1,4 +1,4 @@
-import { Move, Piece, Special } from './pieces.js';
+const { Move, Piece, Special } = require('./pieces.js');
 
 // Seeded Random Number Generator (using mulberry32)
 class SeededRandom {
@@ -1124,5 +1124,3 @@ try {
         window.PieceGenerator = PieceGenerator;
     }
 } catch (e) {}
-
-export { PieceGenerator };
