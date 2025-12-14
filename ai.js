@@ -84,8 +84,8 @@ class ChessAI {
         // Iterative deepening from depth 1..searchDepth so earlier iterations
         // help populate the transposition table and improve move ordering.
         for (let depth = 1; depth <= this.searchDepth; depth++) {
-            // Shuffle once at top-level to introduce variety, but rely on ordering
-            this.shuffleArray(allMoves);
+            // Order top-level moves for better pruning (don't shuffle here)
+            this.orderMoves(allMoves, engine);
 
             let alpha = -Infinity;
             let beta = Infinity;
@@ -133,12 +133,12 @@ class ChessAI {
         return new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    // Minimax algorithm with alpha-beta pruning - takes ChessEngine instance
-    minimax(engine, depth, alpha, beta, isMaximizing) {
+    // Negamax algorithm with alpha-beta pruning (returns score for side to move)
+    minimax(engine, depth, alpha, beta) {
         this.positionEvaluations++;
 
-        // Simple transposition-table lookup (key includes turn and board + depth)
-        const key = this.engineKey(engine) + '|' + depth + '|' + (isMaximizing ? '1' : '0');
+        // Simple transposition-table lookup keyed by position + depth
+        const key = this.engineKey(engine) + '|' + depth;
         const cached = this.transpositionTable.get(key);
         if (cached !== undefined) return cached;
 
@@ -154,8 +154,8 @@ class ChessAI {
         // No legal moves - checkmate or stalemate
         if (moves.length === 0) {
             if (engine.isInCheck(engine.currentTurn)) {
-                // Checkmate - losing position
-                return isMaximizing ? -100000 : 100000;
+                // Current side to move is checkmated => very negative
+                return -100000;
             }
             // Stalemate - draw
             return 0;
@@ -164,31 +164,19 @@ class ChessAI {
         // Order moves for better pruning - captures and center moves first
         this.orderMoves(moves, engine);
 
-        if (isMaximizing) {
-            let maxScore = -Infinity;
-            for (const move of moves) {
-                const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                const score = this.minimax(engine, depth - 1, alpha, beta, false);
-                engine.undoMove(snapshot);
-                maxScore = Math.max(maxScore, score);
-                alpha = Math.max(alpha, score);
-                if (beta <= alpha) break; // Beta cutoff
-            }
-            this.transpositionTable.set(key, maxScore);
-            return maxScore;
-        } else {
-            let minScore = Infinity;
-            for (const move of moves) {
-                const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                const score = this.minimax(engine, depth - 1, alpha, beta, true);
-                engine.undoMove(snapshot);
-                minScore = Math.min(minScore, score);
-                beta = Math.min(beta, score);
-                if (beta <= alpha) break; // Alpha cutoff
-            }
-            this.transpositionTable.set(key, minScore);
-            return minScore;
+        let bestScore = -Infinity;
+        for (const move of moves) {
+            const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
+            const score = -this.minimax(engine, depth - 1, -beta, -alpha);
+            engine.undoMove(snapshot);
+
+            if (score > bestScore) bestScore = score;
+            alpha = Math.max(alpha, score);
+            if (alpha >= beta) break; // cutoff
         }
+
+        this.transpositionTable.set(key, bestScore);
+        return bestScore;
     }
 
     // Order moves to improve alpha-beta pruning effectiveness
