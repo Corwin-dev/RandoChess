@@ -2,8 +2,9 @@
 // Pure UI rendering with no game logic
 
 class BoardRenderer {
-    constructor(boardElement) {
+    constructor(boardElement, pieceGenerator = (typeof window !== 'undefined' ? window.PieceGenerator : null)) {
         this.boardElement = boardElement;
+        this.pieceGenerator = pieceGenerator;
         this.movementOverlay = document.getElementById('movement-overlay');
         this.playerColor = null; // 'white', 'black', or null for white's perspective
         this.defeatedColor = null; // when set to 'white' or 'black', show royal as defeated for that side
@@ -169,7 +170,10 @@ class BoardRenderer {
                         ((cellData.color === 'white' && row === 0) || (cellData.color === 'black' && row === 7));
 
                     const defeated = this.defeatedColor && cellData.piece.royal && cellData.color === this.defeatedColor;
-                    const pieceIcon = PieceGenerator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor, isPromotionSquare, defeated);
+                    const generator = this.pieceGenerator || (typeof window !== 'undefined' ? window.PieceGenerator : null);
+                    const pieceIcon = (generator && typeof generator.createMovementPatternIcon === 'function') ?
+                        generator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor, isPromotionSquare, defeated) :
+                        document.createElement('div');
                     pieceIcon.className = `piece ${cellData.color}`;
                     if (cellData.piece.royal) {
                         pieceIcon.classList.add('royal');
@@ -347,9 +351,12 @@ class UIManager {
     showMessage(msg, duration = 3000) {
         // If this looks like a permanent game result token (used across controllers), show the large overlay
         const resultMap = {
-            '🤝': { emoji: '🤝', title: 'Stalemate', subtitle: 'Draw' },
+            '🤝': { emoji: '🤝', title: 'Agreement', subtitle: 'Draw' },
             '⚪🏁': { emoji: '⚪', title: 'Checkmate', subtitle: 'White wins' },
-            '⚫🏁': { emoji: '⚫', title: 'Checkmate', subtitle: 'Black wins' }
+            '⚫🏁': { emoji: '⚫', title: 'Checkmate', subtitle: 'Black wins' },
+            '🏁': { emoji: '🏁', title: 'Game Over', subtitle: '' },
+            '⚪✋': { emoji: '⚪', title: 'Resignation', subtitle: 'White wins' },
+            '⚫✋': { emoji: '⚫', title: 'Resignation', subtitle: 'Black wins' }
         };
         if (duration === 0 && resultMap[msg]) {
             const info = resultMap[msg];
@@ -795,16 +802,23 @@ class UIManager {
 
             // Try to generate and add the movement pattern icon
                 try {
-                const icon = PieceGenerator.createMovementPatternIcon(piece, 80, 'white', 'white', false, false);
-                icon.style.display = 'block';
-                icon.style.width = '80px';
-                icon.style.height = '80px';
-                icon.style.background = 'transparent';
-                icon.style.boxSizing = 'border-box';
-                choice.appendChild(icon);
+                const generator = this.pieceGenerator || (typeof window !== 'undefined' ? window.PieceGenerator : null);
+                if (generator && typeof generator.createMovementPatternIcon === 'function') {
+                    const icon = generator.createMovementPatternIcon(piece, 80, 'white', 'white', false, false);
+                    icon.style.display = 'block';
+                    icon.style.width = '80px';
+                    icon.style.height = '80px';
+                    icon.style.background = 'transparent';
+                    icon.style.boxSizing = 'border-box';
+                    choice.appendChild(icon);
+                } else {
+                    const fallback = document.createElement('div');
+                    fallback.textContent = '❓';
+                    fallback.style.color = '#fff';
+                    choice.appendChild(fallback);
+                }
             } catch (error) {
                 console.error('Error creating icon for promotion choice:', error);
-                // Fallback: show piece symbol or name minimally
                 const fallback = document.createElement('div');
                 fallback.textContent = '❓';
                 fallback.style.color = '#fff';
@@ -832,19 +846,34 @@ class UIManager {
     // Show a prominent result overlay for checkmate/stalemate
     showResult(emoji, title, subtitle) {
         if (!this.resultOverlay) return;
+        // Show outcome as "You Won / You Lost / Draw" and reason separately
         if (this.resultEmoji) this.resultEmoji.textContent = emoji || '🏁';
-        if (this.resultTitle) this.resultTitle.textContent = title || 'Game Over';
-        if (this.resultSubtitle) this.resultSubtitle.textContent = subtitle || '';
-        this.resultOverlay.classList.remove('hidden');
-        // Make overlay catch pointer events while visible
-        this.resultOverlay.style.pointerEvents = 'auto';
-        // Determine defeated color from subtitle when possible (e.g. 'White wins' -> black defeated)
+
+        // Determine defeated color from subtitle when possible (e.g. 'White wins')
         let defeated = null;
         if (subtitle && typeof subtitle === 'string') {
             if (subtitle.toLowerCase().includes('white wins')) defeated = 'black';
             else if (subtitle.toLowerCase().includes('black wins')) defeated = 'white';
         }
         this.defeatedColor = defeated;
+
+        // Determine current player's color (if available) to show personalized outcome
+        let ourColor = null;
+        try { if (window && window.randoChessApp && window.randoChessApp.currentController && window.randoChessApp.currentController.playerColor) ourColor = window.randoChessApp.currentController.playerColor; } catch (e) {}
+
+        let outcomeText = 'Draw';
+        if (defeated) {
+            if (ourColor) outcomeText = (ourColor === defeated) ? 'You Lost' : 'You Won';
+            else outcomeText = (defeated === 'white') ? 'Black Wins' : 'White Wins';
+        }
+
+        if (this.resultTitle) this.resultTitle.textContent = outcomeText;
+        // Reason should use the provided title (e.g. 'Checkmate', 'Resignation', 'Agreement')
+        const reason = title || (subtitle ? subtitle : 'Game Over');
+        if (this.resultSubtitle) this.resultSubtitle.textContent = `Reason: ${reason}`;
+        this.resultOverlay.classList.remove('hidden');
+        // Make overlay catch pointer events while visible
+        this.resultOverlay.style.pointerEvents = 'auto';
         // Also set the global renderer's defeatedColor (if available) so board icons update
         try {
             if (window && window.randoChessApp && window.randoChessApp.renderer) {

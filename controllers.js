@@ -22,7 +22,7 @@ class GameController {
             if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') {
                 this.uiManager.setTakebackEnabled(true);
             }
-        } catch (e) { /* ignore */ }
+        } catch (e) { console.warn('recordState failed', e); }
     }
 
     // Return whether a takeback is available
@@ -48,6 +48,7 @@ class GameController {
             if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(this.canTakeback());
             return true;
         } catch (e) {
+            console.warn('takeback failed', e);
             return false;
         }
     }
@@ -59,7 +60,9 @@ class GameController {
         this._history = [];
         if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(false);
         // Hide any previous match result overlay when starting
-        if (this.uiManager && this.uiManager.hideResult) this.uiManager.hideResult();
+        if (this.uiManager && this.uiManager.hideResult) {
+            try { this.uiManager.hideResult(); } catch (e) { console.warn('uiManager.hideResult failed', e); }
+        }
         this.render();
         this.uiManager.updateTurn(this.engine.currentTurn);
     }
@@ -181,6 +184,14 @@ class HotseatController extends GameController {
             else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             this.isActive = false;
             if (this.uiManager) this.uiManager.stopClock();
+            // Show end-of-match rematch controls for online matches
+            if (this.uiManager) {
+                try {
+                    this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
+                    this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
+                    this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
+                } catch (e) { console.warn('render failed', e); }
+            }
         }
     }
 
@@ -259,6 +270,13 @@ class OnlineGameController extends GameController {
             else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
             this.isActive = false;
             if (this.uiManager) this.uiManager.stopClock();
+            if (this.uiManager) {
+                try {
+                    this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
+                    this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
+                    this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
+                } catch (e) { console.warn('Ignored error updating endmatch UI (controllers.js)', e); }
+            }
         }
     }
 

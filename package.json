@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "lint": "eslint . --ext .js",
+    "format": "prettier --write .",
     "build:v2": "esbuild v2/src/index.ts --bundle --outfile=v2/dist/bundle.js --sourcemap",
     "dev:v2": "esbuild v2/src/index.ts --bundle --outfile=v2/dist/bundle.js --sourcemap --watch",
     "serve:v2": "npx http-server v2 -p 8080"
@@ -26,6 +28,8 @@
     "esbuild": "^0.27.1",
     "http-server": "^14.1.1",
     "nodemon": "^3.0.1",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "eslint": "^8.50.0",
+    "prettier": "^2.8.8"
   }
 }

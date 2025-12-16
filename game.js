@@ -16,6 +16,9 @@ class RandoChessApp {
         this.takebackOpponentRequest = false;
         this.drawLocalRequest = false;
         this.drawOpponentRequest = false;
+        // Rematch vote state when in online finished match
+        this.rematchLocalSelection = null; // 'roll'|'keep'|null
+        this.rematchOpponentSelection = null;
     }
 
     initialize() {
@@ -72,7 +75,7 @@ class RandoChessApp {
                                     this.currentController.takeback();
                                     this.currentController.takeback && this.currentController.takeback();
                                 }
-                            } catch (e) { /* ignore */ }
+                            } catch (e) { console.warn('Ignored error performing double takeback (game.js)', e); }
                             // notify opponent that takeback was performed
                             if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
                                 this.onlineSocket.send(JSON.stringify({ type: 'TAKEBACK_PERFORM' }));
@@ -89,7 +92,7 @@ class RandoChessApp {
                         }
                         return;
                     }
-                } catch (e) { /* ignore */ }
+                } catch (e) { console.warn('Ignored error in takeback click handler (game.js)', e); }
             });
             // Disable until a move is recorded
             if (typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(false);
@@ -135,7 +138,15 @@ class RandoChessApp {
                                 if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
                                     this.onlineSocket.send(JSON.stringify({ type: 'DRAW_PERFORM' }));
                                 }
-                                if (this.uiManager) this.uiManager.showMessage('🤝', 0);
+                                if (this.uiManager) {
+                                    this.uiManager.showMessage('🤝', 0);
+                                    this.uiManager.stopClock && this.uiManager.stopClock();
+                                    try {
+                                        this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
+                                        this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
+                                        this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
+                                    } catch (e) { console.warn('Ignored UI endmatch update error (game.js)', e); }
+                                }
                                 this.clearDrawRequests();
                                 return;
                             }
@@ -147,7 +158,7 @@ class RandoChessApp {
                             }
                             return;
                         }
-                    } catch (e) { /* ignore */ }
+                    } catch (e) { console.warn('Ignored error in draw click outer handler (game.js)', e); }
                 });
             }
 
@@ -178,43 +189,79 @@ class RandoChessApp {
                         const eng = this.currentController.engine;
                         if (eng) eng.gameOver = true;
                         if (this.uiManager) {
-                            if (winner === 'white') this.uiManager.showMessage('⚪🏁', 0);
-                            else this.uiManager.showMessage('⚫🏁', 0);
+                            if (winner === 'white') this.uiManager.showMessage('⚪✋', 0);
+                            else this.uiManager.showMessage('⚫✋', 0);
                             this.uiManager.stopClock && this.uiManager.stopClock();
+                            // Show rematch controls for online play
+                            try {
+                                this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
+                                this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
+                                this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
+                            } catch (e) { console.warn('Ignored UI endmatch update error in forfeit handler (game.js)', e); }
                         }
                         // Clear any pending draw/takeback state
                         this.clearDrawRequests();
                         this.clearTakebackRequests();
-                    } catch (e) { /* ignore */ }
+                    } catch (e) { console.warn('Ignored error in forfeit click handler (game.js)', e); }
                 });
             }
             // Reroll / Reset controls (no custom seed input)
             if (this.uiManager.onRerollClick) {
                 this.uiManager.onRerollClick(() => {
-                    // New random seed -> regenerate pieces and restart current mode
-                    const seedVal = Date.now() % 1000000;
-                    this.seed = seedVal;
-                    this.pieces = PieceGenerator.generateRandomPieces(seedVal);
-                    // Restart according to current controller type
+                    // If we're in an online finished match, this button acts as a "rematch: roll" vote
                     try {
-                        if (this.currentController instanceof HotseatController) this.startOTBGame();
-                        else this.startAIGame();
-                    } catch (e) { this.startAIGame(); }
+                        if (this.currentController instanceof OnlineGameController && this.currentController.engine && this.currentController.engine.isGameOver && this.currentController.engine.isGameOver()) {
+                            // mark local selection and send vote
+                            this.rematchLocalSelection = 'roll';
+                            if (this.uiManager && this.uiManager.rerollBtn) {
+                                this.uiManager.rerollBtn.classList.add('draw-requested');
+                                this.uiManager.resetBtn && this.uiManager.resetBtn.classList.remove('draw-requested');
+                            }
+                            if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
+                                this.onlineSocket.send(JSON.stringify({ type: 'REMATCH_VOTE', choice: 'roll' }));
+                            }
+                            return;
+                        }
+
+                        // Fallback/local behavior: New random seed -> regenerate pieces and restart current mode
+                        const seedVal = Date.now() % 1000000;
+                        this.seed = seedVal;
+                        this.pieces = PieceGenerator.generateRandomPieces(seedVal);
+                        try {
+                            if (this.currentController instanceof HotseatController) this.startOTBGame();
+                            else this.startAIGame();
+                        } catch (e) { this.startAIGame(); }
+                    } catch (e) { console.warn('Ignored error in reroll click handler (game.js)', e); }
                 });
             }
 
             if (this.uiManager.onResetClick) {
                 this.uiManager.onResetClick(() => {
-                    // Recreate pieces from current seed and restart current mode
-                    if (!this.seed && this.pieces && typeof this.pieces.__seed !== 'undefined') {
-                        this.seed = this.pieces.__seed;
-                    }
-                    if (!this.seed) return;
-                    this.pieces = PieceGenerator.generateRandomPieces(this.seed);
+                    // If we're in an online finished match, this button acts as a "rematch: keep/reset" vote
                     try {
-                        if (this.currentController instanceof HotseatController) this.startOTBGame();
-                        else this.startAIGame();
-                    } catch (e) { this.startAIGame(); }
+                        if (this.currentController instanceof OnlineGameController && this.currentController.engine && this.currentController.engine.isGameOver && this.currentController.engine.isGameOver()) {
+                            this.rematchLocalSelection = 'keep';
+                            if (this.uiManager && this.uiManager.resetBtn) {
+                                this.uiManager.resetBtn.classList.add('draw-requested');
+                                this.uiManager.rerollBtn && this.uiManager.rerollBtn.classList.remove('draw-requested');
+                            }
+                            if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
+                                this.onlineSocket.send(JSON.stringify({ type: 'REMATCH_VOTE', choice: 'keep' }));
+                            }
+                            return;
+                        }
+
+                        // Local fallback: Recreate pieces from current seed and restart current mode
+                        if (!this.seed && this.pieces && typeof this.pieces.__seed !== 'undefined') {
+                            this.seed = this.pieces.__seed;
+                        }
+                        if (!this.seed) return;
+                        this.pieces = PieceGenerator.generateRandomPieces(this.seed);
+                        try {
+                            if (this.currentController instanceof HotseatController) this.startOTBGame();
+                            else this.startAIGame();
+                        } catch (e) { this.startAIGame(); }
+                    } catch (e) { console.warn('Ignored error in reset click handler (game.js)', e); }
                 });
             }
             // Enable reroll/reset by default for local play
@@ -261,7 +308,6 @@ class RandoChessApp {
         
         this.currentController.start();
         this.clearTakebackRequests();
-        this.clearDrawRequests();
         // Update UI to show we're playing AI
         if (this.uiManager) {
             this.uiManager.setOpponentStatus('🤖');
@@ -278,7 +324,6 @@ class RandoChessApp {
         this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
         this.currentController.start(null, 'white');
         this.clearTakebackRequests();
-        this.clearDrawRequests();
         if (this.uiManager) {
             this.uiManager.setOpponentStatus('👥');
             this.uiManager.showSearchButton && this.uiManager.showSearchButton();
@@ -328,8 +373,7 @@ class RandoChessApp {
                     this.currentController = new OnlineGameController(this.pieces, this.renderer, this.uiManager, this.onlineSocket, data.color, this.seed);
                     this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
                     this.currentController.start(data.placement, data.color);
-                        this.clearTakebackRequests();
-                        this.clearDrawRequests();
+                    this.clearTakebackRequests();
                     if (this.uiManager) {
                         this.uiManager.clearMessage();
                         this.uiManager.setOpponentStatus('👤');
@@ -352,7 +396,7 @@ class RandoChessApp {
                         try {
                             this.currentController && this.currentController.takeback && this.currentController.takeback();
                             this.currentController && this.currentController.takeback && this.currentController.takeback();
-                        } catch (e) { /* ignore */ }
+                        } catch (e) { console.warn('Ignored error responding to TAKEBACK_REQUEST (game.js)', e); }
                         // inform opponent
                         if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) this.onlineSocket.send(JSON.stringify({ type: 'TAKEBACK_PERFORM' }));
                         this.clearTakebackRequests();
@@ -364,7 +408,7 @@ class RandoChessApp {
                             this.currentController.takeback();
                             this.currentController.takeback && this.currentController.takeback();
                         }
-                    } catch (e) { /* ignore */ }
+                    } catch (e) { console.warn('Ignored error performing TAKEBACK_PERFORM locally (game.js)', e); }
                     this.clearTakebackRequests();
                 } else if (data.type === 'DRAW_REQUEST') {
                     // Opponent requested a draw - highlight their request
@@ -374,8 +418,8 @@ class RandoChessApp {
                     if (this.drawLocalRequest) {
                         try {
                             if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
-                            try { this.currentController.isActive = false; } catch (e) {}
-                        } catch (e) { /* ignore */ }
+                            try { this.currentController.isActive = false; } catch (e) { console.warn('Ignored error deactivating controller (game.js)', e); }
+                        } catch (e) { console.warn('Ignored error while handling DRAW_REQUEST agree flow (game.js)', e); }
                         if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) this.onlineSocket.send(JSON.stringify({ type: 'DRAW_PERFORM' }));
                         if (this.uiManager) this.uiManager.showMessage('🤝', 0);
                         this.clearDrawRequests();
@@ -385,9 +429,93 @@ class RandoChessApp {
                     try {
                         if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
                         try { this.currentController.isActive = false; } catch (e) {}
-                    } catch (e) { /* ignore */ }
+                    } catch (e) { console.warn('Ignored error finishing DRAW_PERFORM (game.js)', e); }
                     if (this.uiManager) this.uiManager.showMessage('🤝', 0);
+                    // Show rematch controls for online play
+                    try {
+                        this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
+                        this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
+                        this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
+                    } catch (e) { console.warn('Ignored error updating REMATCH_STATUS UI (game.js)', e); }
                     this.clearDrawRequests();
+                } else if (data.type === 'REMATCH_STATUS') {
+                    // Server informs about rematch vote state for this player
+                    try {
+                        if (this.uiManager) {
+                            this.rematchLocalSelection = data.mySelection || null;
+                            this.rematchOpponentSelection = data.opponentSelection || null;
+                            // Update visual state on reroll/reset buttons using draw-requested classes
+                            if (this.uiManager.rerollBtn) this.uiManager.rerollBtn.classList.toggle('draw-requested', this.rematchLocalSelection === 'roll');
+                            if (this.uiManager.resetBtn) this.uiManager.resetBtn.classList.toggle('draw-requested', this.rematchLocalSelection === 'keep');
+                            if (this.uiManager.rerollBtn) this.uiManager.rerollBtn.classList.toggle('draw-opponent-requested', this.rematchOpponentSelection === 'roll');
+                            if (this.uiManager.resetBtn) this.uiManager.resetBtn.classList.toggle('draw-opponent-requested', this.rematchOpponentSelection === 'keep');
+                        }
+                    } catch (e) { console.warn('Ignored error updating REMATCH_STATUS visual state (game.js)', e); }
+                } else if (data.type === 'REMATCH_RESULT') {
+                    // Server decided outcome: either 'reset' (both keep) or 'reroll'
+                    try {
+                            const action = data.action;
+                            const placement = (typeof data.placement !== 'undefined') ? data.placement : null;
+                            // If server requested a reroll and provided a seed, regenerate
+                            // the piece set and deterministic placement locally before
+                            // restarting the online controller. This ensures both clients
+                            // use the identical pieces/placement without requiring the
+                            // server to send the full generated piece objects.
+                            //
+                            // Steps:
+                            // 1. Store the new seed on `this.seed` so subsequent code
+                            //    (and UI) can access it.
+                            // 2. Call `PieceGenerator.generateRandomPieces(seed)` which
+                            //    produces a deterministic set of pieces for the seed.
+                            // 3. Derive placement using `PieceGenerator.generatePlacement`
+                            //    with the same seed so placement is deterministic.
+                            // 4. Prefer a server-sent `placement` when present; otherwise
+                            //    fall back to the locally computed placement.
+                            if (action === 'reroll' && typeof data.seed !== 'undefined' && data.seed !== null) {
+                                try {
+                                    this.seed = data.seed;
+                                    // regenerate the full piece definitions deterministically
+                                    this.pieces = PieceGenerator.generateRandomPieces(this.seed);
+                                    try {
+                                        if (typeof PieceGenerator.generatePlacement === 'function') {
+                                            // generate placement deterministically from the seed
+                                            const genPlacement = PieceGenerator.generatePlacement(this.pieces, this.seed);
+                                            // prefer server-provided placement when available;
+                                            // otherwise, use our locally generated placement
+                                            data.placement = placement || genPlacement;
+                                        }
+                                    } catch (e) { console.warn('Placement generation error during rematch (game.js)', e); }
+                                } catch (e) { console.warn('Piece regeneration error during rematch (game.js)', e); }
+                            }
+
+                            // Restart online controller with new placement (server-provided or locally generated)
+                            try {
+                                // Remember previous player color so we can switch on rematch
+                                const prevColor = (this.currentController && this.currentController.playerColor) ? this.currentController.playerColor : null;
+                                // Stop existing controller
+                                if (this.currentController) {
+                                    try { this.currentController.stop(); } catch (e) {}
+                                }
+                                // Always switch colors for rematch: flip previous color if available
+                                const color = prevColor ? (prevColor === 'white' ? 'black' : 'white') : (data.color || 'white');
+                                // If placement provided, use it; otherwise reuse current pieces/placement
+                                const newPlacement = (placement || data.placement) || (this.currentController && this.currentController.engine && this.currentController.engine.placement) || null;
+                                this.currentController = new OnlineGameController(this.pieces, this.renderer, this.uiManager, this.onlineSocket, color, this.seed);
+                                this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
+                                this.currentController.start(newPlacement, color);
+                            } catch (e) { console.warn('Failed to restart after rematch result', e); }
+
+                        // Clear rematch UI highlights
+                        this.rematchLocalSelection = null;
+                        this.rematchOpponentSelection = null;
+                        if (this.uiManager) {
+                            if (this.uiManager.rerollBtn) this.uiManager.rerollBtn.classList.remove('draw-requested', 'draw-opponent-requested');
+                            if (this.uiManager.resetBtn) this.uiManager.resetBtn.classList.remove('draw-requested', 'draw-opponent-requested');
+                            this.uiManager.hideEndmatchControls && this.uiManager.hideEndmatchControls();
+                            this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(false);
+                            this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(false);
+                        }
+                    } catch (e) { /* ignore */ }
                 } else if (data.type === 'RESIGN') {
                     // Opponent resigned - they lose, we win. Use explicit winner from server if provided.
                     try {
@@ -404,10 +532,16 @@ class RandoChessApp {
                     }
 
                     if (this.uiManager) {
-                        if (winner === 'white') this.uiManager.showMessage('⚪🏁', 3000);
-                        else if (winner === 'black') this.uiManager.showMessage('⚫🏁', 3000);
-                        else this.uiManager.showMessage('🏁', 3000);
+                        if (winner === 'white') this.uiManager.showMessage('⚪✋', 0);
+                        else if (winner === 'black') this.uiManager.showMessage('⚫✋', 0);
+                        else this.uiManager.showMessage('🏁', 0);
                         this.uiManager.stopClock && this.uiManager.stopClock();
+                        // Show rematch controls for online play
+                        try {
+                            this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
+                            this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
+                            this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
+                        } catch (e) { console.warn('Ignored error finishing REMATCH_RESULT flow (game.js)', e); }
                     }
                     this.clearDrawRequests();
                 } else if (data.type === 'OPPONENT_LEFT') {
