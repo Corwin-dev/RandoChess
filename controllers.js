@@ -9,11 +9,55 @@ class GameController {
         this.uiManager = uiManager;
         this.selectedSquare = null;
         this.isActive = false;
+        this._history = []; // store engine clones for takeback
+    }
+
+    // Record current engine state to history (clone) before applying a move
+    recordState() {
+        try {
+            if (!this.engine) return;
+            // Keep a shallow cap to avoid unbounded memory
+            this._history.push(this.engine.clone());
+            if (this._history.length > 256) this._history.shift();
+            if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') {
+                this.uiManager.setTakebackEnabled(true);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // Return whether a takeback is available
+    canTakeback() {
+        return Array.isArray(this._history) && this._history.length > 0;
+    }
+
+    // Restore last recorded engine state (single-step takeback)
+    takeback() {
+        if (!this.canTakeback()) return false;
+        try {
+            const prev = this._history.pop();
+            if (!prev) return false;
+            // Replace engine state with cloned version
+            this.engine = prev;
+            // Update UI/renderer
+            if (this.renderer) {
+                try { this.renderer.clearSelection(); } catch (e) {}
+                this.renderer.render(this.engine.board, this.engine.lastMove, this.engine);
+            }
+            this.selectedSquare = null;
+            if (this.uiManager && typeof this.uiManager.updateTurn === 'function') this.uiManager.updateTurn(this.engine.currentTurn);
+            if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(this.canTakeback());
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     start(placement = null) {
         this.engine.initializeBoard(placement);
         this.isActive = true;
+        // Reset takeback history when starting a fresh game
+        this._history = [];
+        if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(false);
         // Hide any previous match result overlay when starting
         if (this.uiManager && this.uiManager.hideResult) this.uiManager.hideResult();
         this.render();
@@ -105,6 +149,8 @@ class HotseatController extends GameController {
     }
 
     makeMove(fromRow, fromCol, toRow, toCol) {
+        // Record state so takeback can restore prior position
+        this.recordState();
         const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
         if (!success) return;
 
@@ -178,6 +224,8 @@ class OnlineGameController extends GameController {
     }
 
     makeMove(fromRow, fromCol, toRow, toCol) {
+        // Record state before applying move (so we can undo locally)
+        this.recordState();
         const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
         if (!success) return;
         this.clearSelection();
@@ -279,8 +327,10 @@ class AIGameController extends GameController {
     }
 
     makeMove(fromRow, fromCol, toRow, toCol) {
+        // Record state before applying move so user can takeback
+        this.recordState();
         const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
-        
+
         if (!success) return;
         
         this.clearSelection();
@@ -338,6 +388,31 @@ class AIGameController extends GameController {
             this.makeAIMove();
         }
     }
+
+    // AI-specific takeback: revert to the state before the player's last move.
+    // This typically requires undoing both the AI's reply and the player's move.
+    takeback() {
+        // If there are at least two snapshots, pop twice. Otherwise, fall back to single.
+        if (!this.canTakeback()) return false;
+        try {
+            if (this._history.length >= 2) {
+                super.takeback(); // undo AI move (or last ply)
+                super.takeback(); // undo player's move
+            } else {
+                super.takeback();
+            }
+            // Stop any pending AI thinking and clear thinking UI
+            if (this.aiTimeout) {
+                clearTimeout(this.aiTimeout);
+                this.aiTimeout = null;
+            }
+            if (this.uiManager) {
+                this.uiManager.setThinking('idle');
+                this.uiManager.updateTurn(this.engine.currentTurn);
+            }
+            return true;
+        } catch (e) { return false; }
+    }
     
     checkGameState() {
         if (this.engine.isGameOver()) {
@@ -378,6 +453,8 @@ class AIGameController extends GameController {
             }
 
             if (bestMove) {
+                // Record current state so AI moves can be undone as well
+                this.recordState();
                 this.engine.makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol);
 
                 // Handle AI promotion - always choose first piece (strongest)

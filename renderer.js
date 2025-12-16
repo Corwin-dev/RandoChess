@@ -288,12 +288,16 @@ class UIManager {
         this.modePlayAIButton = document.getElementById('btn-play-ai');
         this.modeOTBButton = document.getElementById('btn-play-otb');
         this.modeOnlineButton = document.getElementById('btn-play-online');
-        this.seedInput = document.getElementById('seed-input');
-        this.seedRollBtn = document.getElementById('seed-roll-btn');
+        this.takebackBtn = document.getElementById('takeback-btn');
+        this.rerollBtn = document.getElementById('reroll-btn');
+        this.resetBtn = document.getElementById('reset-btn');
+        this.drawBtn = document.getElementById('draw-btn');
+        this.forfeitBtn = document.getElementById('forfeit-btn');
         this.resultOverlay = document.getElementById('result-overlay');
         this.resultEmoji = document.getElementById('result-emoji');
         this.resultTitle = document.getElementById('result-title');
         this.resultSubtitle = document.getElementById('result-subtitle');
+        this.resultCloseBtn = document.getElementById('result-close');
         this.permanentStatus = ''; // Store permanent status message (like search status)
         this.messageTimeout = null; // Track active message timeout
         // Clock / time-control state
@@ -303,6 +307,25 @@ class UIManager {
         this.remaining = { player: this.timeControl.base, opponent: this.timeControl.base, ai: this.timeControl.base };
 
         // Seed is shown only in the input; no separate HUD/copy button.
+        // Allow dismissing the result overlay by clicking outside the box, pressing Escape, or the close button.
+        try {
+            if (this.resultOverlay) {
+                this.resultOverlay.addEventListener('click', (e) => {
+                    if (e.target === this.resultOverlay) this.hideResult();
+                });
+            }
+            if (this.resultCloseBtn) {
+                this.resultCloseBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.hideResult();
+                });
+            }
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && this.resultOverlay && !this.resultOverlay.classList.contains('hidden')) {
+                    this.hideResult();
+                }
+            });
+        } catch (e) { /* ignore in non-browser env */ }
     }
 
     // Game status bubble (separate from low-level connection status)
@@ -638,26 +661,84 @@ class UIManager {
         if (this.modePlayAIButton) this.modePlayAIButton.addEventListener('click', callback);
     }
 
-    onSeedRollClick(callback) {
-        if (this.seedRollBtn) this.seedRollBtn.addEventListener('click', callback);
+    onRerollClick(callback) {
+        if (this.rerollBtn) this.rerollBtn.addEventListener('click', callback);
     }
 
-    getSeedInputValue() {
-        return this.seedInput ? this.seedInput.value : '';
+    onResetClick(callback) {
+        if (this.resetBtn) this.resetBtn.addEventListener('click', callback);
     }
 
-    setSeedInputValue(v) {
-        if (this.seedInput) this.seedInput.value = String(v || '');
+    onDrawClick(callback) {
+        if (this.drawBtn) this.drawBtn.addEventListener('click', callback);
     }
 
-    // Seed is shown only in the input; no separate HUD/copy button.
+    onForfeitClick(callback) {
+        if (this.forfeitBtn) this.forfeitBtn.addEventListener('click', callback);
+    }
+
+    setRerollEnabled(enabled) {
+        if (!this.rerollBtn) return;
+        this.rerollBtn.disabled = !enabled;
+        this.rerollBtn.style.opacity = enabled ? '1' : '0.5';
+    }
+
+    setResetEnabled(enabled) {
+        if (!this.resetBtn) return;
+        this.resetBtn.disabled = !enabled;
+        this.resetBtn.style.opacity = enabled ? '1' : '0.5';
+    }
 
     onModeOTBClick(callback) {
         if (this.modeOTBButton) this.modeOTBButton.addEventListener('click', callback);
     }
 
+    setDrawEnabled(enabled) {
+        if (!this.drawBtn) return;
+        this.drawBtn.disabled = !enabled;
+        this.drawBtn.style.opacity = enabled ? '1' : '0.5';
+    }
+
+    setForfeitEnabled(enabled) {
+        if (!this.forfeitBtn) return;
+        this.forfeitBtn.disabled = !enabled;
+        this.forfeitBtn.style.opacity = enabled ? '1' : '0.5';
+    }
+
     onModeOnlineClick(callback) {
         if (this.modeOnlineButton) this.modeOnlineButton.addEventListener('click', callback);
+    }
+
+    onTakebackClick(callback) {
+        if (this.takebackBtn) this.takebackBtn.addEventListener('click', callback);
+    }
+
+    setTakebackEnabled(enabled) {
+        if (!this.takebackBtn) return;
+        this.takebackBtn.disabled = !enabled;
+        this.takebackBtn.style.opacity = enabled ? '1' : '0.5';
+    }
+
+    // Visually indicate takeback requests. `myRequested` marks that the
+    // local player has requested a takeback; `opponentRequested` marks that
+    // the remote opponent has requested one. Both flags can be used to
+    // apply distinct highlights.
+    setTakebackRequested(myRequested, opponentRequested) {
+        if (!this.takebackBtn) return;
+        this.takebackBtn.classList.toggle('takeback-requested', !!myRequested);
+        this.takebackBtn.classList.toggle('takeback-opponent-requested', !!opponentRequested);
+        // slightly emphasize when opponent requested
+        if (opponentRequested) this.takebackBtn.style.boxShadow = '0 0 8px rgba(0,128,255,0.6)';
+        else this.takebackBtn.style.boxShadow = '';
+    }
+
+    // Visually indicate draw offer requests. Mirrors setTakebackRequested semantics.
+    setDrawRequested(myRequested, opponentRequested) {
+        if (!this.drawBtn) return;
+        this.drawBtn.classList.toggle('draw-requested', !!myRequested);
+        this.drawBtn.classList.toggle('draw-opponent-requested', !!opponentRequested);
+        if (opponentRequested) this.drawBtn.style.boxShadow = '0 0 8px rgba(0,200,0,0.6)';
+        else this.drawBtn.style.boxShadow = '';
     }
 
     onNewOpponentClick(callback) {

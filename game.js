@@ -12,6 +12,10 @@ class RandoChessApp {
         this.uiManager = null;
         this.currentController = null;
         this.multiplayerClient = null;
+        this.takebackLocalRequest = false;
+        this.takebackOpponentRequest = false;
+        this.drawLocalRequest = false;
+        this.drawOpponentRequest = false;
     }
 
     initialize() {
@@ -36,39 +40,188 @@ class RandoChessApp {
             this.uiManager.onModePlayAIClick(() => this.startAIGame());
             this.uiManager.onModeOTBClick(() => this.startOTBGame());
             this.uiManager.onModeOnlineClick(() => this.startOnlineSearch());
+            // Takeback wiring (handles AI / OTB / Online semantics)
+            this.uiManager.onTakebackClick(() => {
+                try {
+                    // AI opponent: revert to before player's last move (controller handles double-undo)
+                    if (this.currentController instanceof AIGameController) {
+                        if (typeof this.currentController.takeback === 'function') this.currentController.takeback();
+                        // clear any pending local takeback UI state
+                        if (this.uiManager && typeof this.uiManager.setTakebackRequested === 'function') this.uiManager.setTakebackRequested(false, false);
+                        this.takebackLocalRequest = false; this.takebackOpponentRequest = false;
+                        return;
+                    }
+
+                    // Hotseat / OTB: single ply takeback
+                    if (this.currentController instanceof HotseatController) {
+                        if (typeof this.currentController.takeback === 'function') this.currentController.takeback();
+                        if (this.uiManager && typeof this.uiManager.setTakebackRequested === 'function') this.uiManager.setTakebackRequested(false, false);
+                        this.takebackLocalRequest = false; this.takebackOpponentRequest = false;
+                        return;
+                    }
+
+                    // Online: send a request and highlight until opponent also requests.
+                    if (this.currentController instanceof OnlineGameController) {
+                        // If opponent already requested, perform agreed takeback now (two ply)
+                        if (this.takebackOpponentRequest) {
+                            // Perform double takeback if possible
+                            try {
+                                // Undo last two plies if available
+                                if (this.currentController && typeof this.currentController.takeback === 'function') {
+                                    // Attempt two undos; if only one available, controller will fallback
+                                    this.currentController.takeback();
+                                    this.currentController.takeback && this.currentController.takeback();
+                                }
+                            } catch (e) { /* ignore */ }
+                            // notify opponent that takeback was performed
+                            if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
+                                this.onlineSocket.send(JSON.stringify({ type: 'TAKEBACK_PERFORM' }));
+                            }
+                            this.clearTakebackRequests();
+                            return;
+                        }
+
+                        // Otherwise send a request and highlight locally
+                        this.takebackLocalRequest = true;
+                        if (this.uiManager && typeof this.uiManager.setTakebackRequested === 'function') this.uiManager.setTakebackRequested(true, this.takebackOpponentRequest);
+                        if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
+                            this.onlineSocket.send(JSON.stringify({ type: 'TAKEBACK_REQUEST' }));
+                        }
+                        return;
+                    }
+                } catch (e) { /* ignore */ }
+            });
+            // Disable until a move is recorded
+            if (typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(false);
             this.uiManager.setOpponentStatus('🤖');
             // Attach cancel to cancelOnlineSearch so user can cancel searching
             this.uiManager.onCancelClick(() => this.cancelOnlineSearch());
-            // Seed control: apply seed from input (or roll a new seed when blank)
-            this.uiManager.onSeedRollClick(() => {
-                const originalVal = this.uiManager.getSeedInputValue();
-                let seedVal = null;
-                if (originalVal && originalVal.trim().length > 0) {
-                    // try parse as number, fall back to hashing string
-                    const n = Number(originalVal);
-                    seedVal = Number.isFinite(n) ? n : this.hashStringToSeed(originalVal);
-                } else {
-                    seedVal = Date.now() % 1000000;
-                    // For rolled seeds, show the numeric seed in the input
-                    this.uiManager.setSeedInputValue(seedVal);
-                }
+            // Draw / Forfeit handlers
+            if (this.uiManager.onDrawClick) {
+                this.uiManager.onDrawClick(() => {
+                    try {
+                        // AI/local: treat draw as immediate agreement
+                        if (this.currentController instanceof AIGameController) {
+                            // End as draw
+                            try { this.currentController.isActive = false; } catch (e) {}
+                            if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
+                            if (this.uiManager) this.uiManager.showMessage('🤝', 0);
+                            if (this.uiManager) this.uiManager.stopClock && this.uiManager.stopClock();
+                            this.clearDrawRequests();
+                            return;
+                        }
 
-                this.seed = seedVal;
-                this.pieces = PieceGenerator.generateRandomPieces(seedVal);
+                        // Hotseat: toggle local draw request; second toggle performs draw
+                        if (this.currentController instanceof HotseatController) {
+                            if (this.drawLocalRequest) {
+                                // Both agreed (local double-click)
+                                if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
+                                try { this.currentController.isActive = false; } catch (e) {}
+                                if (this.uiManager) this.uiManager.showMessage('🤝', 0);
+                                this.clearDrawRequests();
+                                return;
+                            }
+                            this.drawLocalRequest = true;
+                            if (this.uiManager && typeof this.uiManager.setDrawRequested === 'function') this.uiManager.setDrawRequested(true, false);
+                            return;
+                        }
 
-                // Preserve the user's exact input text when they typed one.
-                // Only overwrite the input when it was originally blank (we rolled a seed).
-                if (!originalVal || originalVal.trim().length === 0) {
-                    if (this.uiManager) this.uiManager.setSeedInputValue(this.seed);
-                }
+                        // Online: send a request and highlight until opponent also requests.
+                        if (this.currentController instanceof OnlineGameController) {
+                            if (this.drawOpponentRequest) {
+                                // Both agreed -> finalize draw
+                                if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
+                                try { this.currentController.isActive = false; } catch (e) {}
+                                if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
+                                    this.onlineSocket.send(JSON.stringify({ type: 'DRAW_PERFORM' }));
+                                }
+                                if (this.uiManager) this.uiManager.showMessage('🤝', 0);
+                                this.clearDrawRequests();
+                                return;
+                            }
 
-                // restart the current view/game with the new pieces (start AI by default)
-                this.startAIGame();
-            });
-            // If there was a seed from the URL, show it in the input
-            if (this.seed) {
-                this.uiManager.setSeedInputValue(this.seed);
+                            this.drawLocalRequest = true;
+                            if (this.uiManager && typeof this.uiManager.setDrawRequested === 'function') this.uiManager.setDrawRequested(true, this.drawOpponentRequest);
+                            if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
+                                this.onlineSocket.send(JSON.stringify({ type: 'DRAW_REQUEST' }));
+                            }
+                            return;
+                        }
+                    } catch (e) { /* ignore */ }
+                });
             }
+
+            if (this.uiManager.onForfeitClick) {
+                this.uiManager.onForfeitClick(() => {
+                    try {
+                        if (!this.currentController) return;
+
+                        // Determine the resigning side. For online/AI modes prefer the
+                        // controller's `playerColor`, otherwise fall back to currentTurn.
+                        let resigning = null;
+                        if (this.currentController.playerColor) resigning = this.currentController.playerColor;
+                        else if (this.currentController.engine && this.currentController.engine.currentTurn) resigning = this.currentController.engine.currentTurn;
+                        // Hotseat: assume the local side to move resigns
+                        if (!resigning && this.currentController instanceof HotseatController && this.currentController.engine) resigning = this.currentController.engine.currentTurn;
+
+                        const winner = resigning === 'white' ? 'black' : 'white';
+
+                        // Online: notify opponent with explicit winner so receiver can display correctly
+                        if (this.currentController instanceof OnlineGameController) {
+                            if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) {
+                                this.onlineSocket.send(JSON.stringify({ type: 'RESIGN', winner }));
+                            }
+                        }
+
+                        // Apply local resignation result
+                        try { this.currentController.isActive = false; } catch (e) {}
+                        const eng = this.currentController.engine;
+                        if (eng) eng.gameOver = true;
+                        if (this.uiManager) {
+                            if (winner === 'white') this.uiManager.showMessage('⚪🏁', 0);
+                            else this.uiManager.showMessage('⚫🏁', 0);
+                            this.uiManager.stopClock && this.uiManager.stopClock();
+                        }
+                        // Clear any pending draw/takeback state
+                        this.clearDrawRequests();
+                        this.clearTakebackRequests();
+                    } catch (e) { /* ignore */ }
+                });
+            }
+            // Reroll / Reset controls (no custom seed input)
+            if (this.uiManager.onRerollClick) {
+                this.uiManager.onRerollClick(() => {
+                    // New random seed -> regenerate pieces and restart current mode
+                    const seedVal = Date.now() % 1000000;
+                    this.seed = seedVal;
+                    this.pieces = PieceGenerator.generateRandomPieces(seedVal);
+                    // Restart according to current controller type
+                    try {
+                        if (this.currentController instanceof HotseatController) this.startOTBGame();
+                        else this.startAIGame();
+                    } catch (e) { this.startAIGame(); }
+                });
+            }
+
+            if (this.uiManager.onResetClick) {
+                this.uiManager.onResetClick(() => {
+                    // Recreate pieces from current seed and restart current mode
+                    if (!this.seed && this.pieces && typeof this.pieces.__seed !== 'undefined') {
+                        this.seed = this.pieces.__seed;
+                    }
+                    if (!this.seed) return;
+                    this.pieces = PieceGenerator.generateRandomPieces(this.seed);
+                    try {
+                        if (this.currentController instanceof HotseatController) this.startOTBGame();
+                        else this.startAIGame();
+                    } catch (e) { this.startAIGame(); }
+                });
+            }
+            // Enable reroll/reset by default for local play
+            if (this.uiManager.setRerollEnabled) this.uiManager.setRerollEnabled(true);
+            if (this.uiManager.setResetEnabled) this.uiManager.setResetEnabled(true);
+            if (this.uiManager.setDrawEnabled) this.uiManager.setDrawEnabled(true);
+            if (this.uiManager.setForfeitEnabled) this.uiManager.setForfeitEnabled(true);
         }
 
         // Start default AI game
@@ -107,10 +260,14 @@ class RandoChessApp {
         });
         
         this.currentController.start();
+        this.clearTakebackRequests();
+        this.clearDrawRequests();
         // Update UI to show we're playing AI
         if (this.uiManager) {
             this.uiManager.setOpponentStatus('🤖');
             this.uiManager.showCancelButton();
+            if (this.uiManager.setRerollEnabled) this.uiManager.setRerollEnabled(true);
+            if (this.uiManager.setResetEnabled) this.uiManager.setResetEnabled(true);
 
         }
     }
@@ -120,9 +277,13 @@ class RandoChessApp {
         this.currentController = new HotseatController(this.pieces, this.renderer, this.uiManager, this.seed);
         this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
         this.currentController.start(null, 'white');
+        this.clearTakebackRequests();
+        this.clearDrawRequests();
         if (this.uiManager) {
             this.uiManager.setOpponentStatus('👥');
             this.uiManager.showSearchButton && this.uiManager.showSearchButton();
+            if (this.uiManager.setRerollEnabled) this.uiManager.setRerollEnabled(true);
+            if (this.uiManager.setResetEnabled) this.uiManager.setResetEnabled(true);
         }
     }
 
@@ -133,6 +294,8 @@ class RandoChessApp {
             this.uiManager.setGameStatus('searching');
             this.uiManager.showCancelButton();
             this.uiManager.setThinking('ready');
+            if (this.uiManager.setRerollEnabled) this.uiManager.setRerollEnabled(false);
+            if (this.uiManager.setResetEnabled) this.uiManager.setResetEnabled(false);
         }
 
         // Establish WebSocket connection to server and join queue
@@ -165,15 +328,88 @@ class RandoChessApp {
                     this.currentController = new OnlineGameController(this.pieces, this.renderer, this.uiManager, this.onlineSocket, data.color, this.seed);
                     this.renderer.attachEventListener((row, col) => this.currentController.handleSquareClick(row, col));
                     this.currentController.start(data.placement, data.color);
+                        this.clearTakebackRequests();
+                        this.clearDrawRequests();
                     if (this.uiManager) {
                         this.uiManager.clearMessage();
                         this.uiManager.setOpponentStatus('👤');
                         this.uiManager.setConnectionStatus('connected');
+                        if (this.uiManager.setRerollEnabled) this.uiManager.setRerollEnabled(false);
+                        if (this.uiManager.setResetEnabled) this.uiManager.setResetEnabled(false);
                     }
                 } else if (data.type === 'MOVE') {
                     if (this.currentController && typeof this.currentController.applyRemoteMove === 'function') {
                         this.currentController.applyRemoteMove(data.move);
+                        // Any remote move clears pending takeback requests
+                        this.clearTakebackRequests();
                     }
+                } else if (data.type === 'TAKEBACK_REQUEST') {
+                    // Opponent requested a takeback - highlight their request
+                    this.takebackOpponentRequest = true;
+                    if (this.uiManager && typeof this.uiManager.setTakebackRequested === 'function') this.uiManager.setTakebackRequested(this.takebackLocalRequest, true);
+                    // If we already requested locally, agree and perform takeback
+                    if (this.takebackLocalRequest) {
+                        try {
+                            this.currentController && this.currentController.takeback && this.currentController.takeback();
+                            this.currentController && this.currentController.takeback && this.currentController.takeback();
+                        } catch (e) { /* ignore */ }
+                        // inform opponent
+                        if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) this.onlineSocket.send(JSON.stringify({ type: 'TAKEBACK_PERFORM' }));
+                        this.clearTakebackRequests();
+                    }
+                } else if (data.type === 'TAKEBACK_PERFORM') {
+                    // Opponent confirmed/initiated the takeback - perform it locally if not already
+                    try {
+                        if (this.currentController && typeof this.currentController.takeback === 'function') {
+                            this.currentController.takeback();
+                            this.currentController.takeback && this.currentController.takeback();
+                        }
+                    } catch (e) { /* ignore */ }
+                    this.clearTakebackRequests();
+                } else if (data.type === 'DRAW_REQUEST') {
+                    // Opponent requested a draw - highlight their request
+                    this.drawOpponentRequest = true;
+                    if (this.uiManager && typeof this.uiManager.setDrawRequested === 'function') this.uiManager.setDrawRequested(this.drawLocalRequest, true);
+                    // If we already requested locally, agree and perform draw
+                    if (this.drawLocalRequest) {
+                        try {
+                            if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
+                            try { this.currentController.isActive = false; } catch (e) {}
+                        } catch (e) { /* ignore */ }
+                        if (this.onlineSocket && this.onlineSocket.readyState === WebSocket.OPEN) this.onlineSocket.send(JSON.stringify({ type: 'DRAW_PERFORM' }));
+                        if (this.uiManager) this.uiManager.showMessage('🤝', 0);
+                        this.clearDrawRequests();
+                    }
+                } else if (data.type === 'DRAW_PERFORM') {
+                    // Opponent accepted/initiated draw - finish locally
+                    try {
+                        if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
+                        try { this.currentController.isActive = false; } catch (e) {}
+                    } catch (e) { /* ignore */ }
+                    if (this.uiManager) this.uiManager.showMessage('🤝', 0);
+                    this.clearDrawRequests();
+                } else if (data.type === 'RESIGN') {
+                    // Opponent resigned - they lose, we win. Use explicit winner from server if provided.
+                    try {
+                        if (this.currentController && this.currentController.engine) this.currentController.engine.gameOver = true;
+                        try { if (this.currentController) this.currentController.isActive = false; } catch (e) {}
+                    } catch (e) { /* ignore */ }
+
+                    let winner = data && data.winner ? data.winner : null;
+                    // If server didn't include a winner, assume the receiver is the winner when online
+                    if (!winner) {
+                        const ourColor = (this.currentController && this.currentController.playerColor) ? this.currentController.playerColor : null;
+                        if (ourColor) winner = ourColor;
+                        else winner = 'white';
+                    }
+
+                    if (this.uiManager) {
+                        if (winner === 'white') this.uiManager.showMessage('⚪🏁', 3000);
+                        else if (winner === 'black') this.uiManager.showMessage('⚫🏁', 3000);
+                        else this.uiManager.showMessage('🏁', 3000);
+                        this.uiManager.stopClock && this.uiManager.stopClock();
+                    }
+                    this.clearDrawRequests();
                 } else if (data.type === 'OPPONENT_LEFT') {
                     if (this.uiManager) {
                         this.uiManager.showMessage('👤❌➡️🤖', 3000);
@@ -209,6 +445,18 @@ class RandoChessApp {
             this.uiManager.setClock('00:00');
         }
         this.startAIGame();
+    }
+
+    clearTakebackRequests() {
+        this.takebackLocalRequest = false;
+        this.takebackOpponentRequest = false;
+        if (this.uiManager && typeof this.uiManager.setTakebackRequested === 'function') this.uiManager.setTakebackRequested(false, false);
+    }
+
+    clearDrawRequests() {
+        this.drawLocalRequest = false;
+        this.drawOpponentRequest = false;
+        if (this.uiManager && typeof this.uiManager.setDrawRequested === 'function') this.uiManager.setDrawRequested(false, false);
     }
 
     startMultiplayerSearch() {
@@ -310,6 +558,8 @@ class RandoChessApp {
                 this.uiManager.setOpponentStatus(`👤`);
                 this.uiManager.setConnectionStatus('connected');
                 this.uiManager.hideSearchButton();
+                if (this.uiManager.setRerollEnabled) this.uiManager.setRerollEnabled(false);
+                if (this.uiManager.setResetEnabled) this.uiManager.setResetEnabled(false);
                 // Hide any end-of-match controls (we're in a fresh match)
                 if (this.uiManager.hideEndmatchControls) this.uiManager.hideEndmatchControls();
             }

@@ -111,6 +111,13 @@ wss.on('connection', (ws) => {
             for (const p of session.players) {
                 try { if (p.readyState === WebSocket.OPEN) p.send(JSON.stringify(Object.assign({ type: 'MOVE' }, { move: data.move, gameOver: data.gameOver || false, winner: data.winner || null }))); } catch (e) {}
             }
+        } else if (data.type === 'DRAW_REQUEST' || data.type === 'DRAW_PERFORM' || data.type === 'RESIGN' || data.type === 'TAKEBACK_REQUEST' || data.type === 'TAKEBACK_PERFORM') {
+            const session = gameSessions.get(ws.sessionId);
+            if (!session) return;
+            // Relay these control messages to both players unchanged
+            for (const p of session.players) {
+                try { if (p.readyState === WebSocket.OPEN) p.send(JSON.stringify(data)); } catch (e) {}
+            }
         }
     });
 

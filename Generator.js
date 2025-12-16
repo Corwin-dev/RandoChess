@@ -989,7 +989,7 @@ class PieceGenerator {
 
                 if (isCenter) {
                     if (piece.royal) {
-                        if (defeated) {
+                        if (false) {
                             const grad = ctx.createLinearGradient(px, py, px + width, py + height);
                             grad.addColorStop(0, '#FF6B6B');
                             grad.addColorStop(0.35, '#E63946');

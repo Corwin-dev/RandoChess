@@ -20,15 +20,13 @@
             <button id="btn-play-ai" class="mode-btn" aria-label="Play Against AI">🤖</button>
             <button id="btn-play-otb" class="mode-btn" aria-label="Play Over The Board">👥</button>
             <button id="btn-play-online" class="mode-btn" aria-label="Play Online">🌐</button>
+            <button id="takeback-btn" class="mode-btn" aria-label="Take back last move">↩️</button>
             <div class="seed-controls">
-                <input id="seed-input" type="text" placeholder="seed (optional)" aria-label="Seed input" />
-                <button id="seed-roll-btn" class="mode-btn" aria-label="Apply seed">🎲</button>
+                <button id="reroll-btn" class="mode-btn" aria-label="Reroll setup">🎲</button>
+                <button id="reset-btn" class="mode-btn" aria-label="Reset setup">🔁</button>
             </div>
-        
-            <div id="seed-hud" class="seed-hud">
-                <span id="seed-value" class="seed-value"></span>
-                <button id="seed-copy-btn" class="seed-copy" aria-label="Copy seed">📋</button>
-            </div>
+            <button id="draw-btn" class="mode-btn" aria-label="Offer Draw">🤝</button>
+            <button id="forfeit-btn" class="mode-btn" aria-label="Forfeit Game">🏳️</button>
         </div>
         <div id="board-container">
             <div id="board"></div>
@@ -51,6 +49,7 @@
     <!-- Prominent result overlay (hidden until game over) -->
     <div id="result-overlay" class="result-overlay hidden" role="status" aria-live="polite">
         <div class="result-box">
+            <button id="result-close" class="result-close" aria-label="Dismiss result">✖</button>
             <div id="result-emoji" class="result-emoji">🏁</div>
             <div id="result-title" class="result-title">Game Over</div>
             <div id="result-subtitle" class="result-subtitle">Stalemate / Checkmate</div>
