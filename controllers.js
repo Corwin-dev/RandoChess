@@ -73,6 +73,36 @@ class GameController {
         }
     }
 
+    // Centralized end-of-game display helper so we can include engine-provided
+    // reasons (e.g. 'Insufficient material'). Uses renderer.showResult when
+    // available to present a custom reason, otherwise falls back to
+    // uiManager.showMessage.
+    displayGameEnd() {
+        try {
+            const winner = this.engine.getWinner();
+            if (winner === 'draw') {
+                if (this.engine && this.engine.resultReason && this.renderer && typeof this.renderer.showResult === 'function') {
+                    this.renderer.showResult('🤝', this.engine.resultReason, 'Draw');
+                } else if (this.uiManager) {
+                    this.uiManager.showMessage('🤝', 0);
+                }
+            } else {
+                if (this.uiManager) this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            }
+        } catch (e) {
+            if (this.uiManager) this.uiManager.showMessage('🏁', 0);
+        }
+        try {
+            this.isActive = false;
+            if (this.uiManager) this.uiManager.stopClock && this.uiManager.stopClock();
+            if (this.uiManager) {
+                this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
+                this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
+                this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
     start(placement = null) {
         this.engine.initializeBoard(placement);
         this.isActive = true;
@@ -237,41 +267,13 @@ class HotseatController extends GameController {
         }
 
         if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else
-                this.uiManager.showMessage(
-                    winner === 'white' ? '⚪🏁' : '⚫🏁',
-                    0
-                );
-            this.isActive = false;
-            if (this.uiManager) this.uiManager.stopClock();
-            // Show end-of-match rematch controls for online matches
-            if (this.uiManager) {
-                try {
-                    this.uiManager.showEndmatchControls &&
-                        this.uiManager.showEndmatchControls();
-                    this.uiManager.setRerollEnabled &&
-                        this.uiManager.setRerollEnabled(true);
-                    this.uiManager.setResetEnabled &&
-                        this.uiManager.setResetEnabled(true);
-                } catch (e) {
-                    console.warn('render failed', e);
-                }
-            }
+            this.displayGameEnd();
         }
     }
 
     checkGameState() {
         if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else
-                this.uiManager.showMessage(
-                    winner === 'white' ? '⚪🏁' : '⚫🏁',
-                    0
-                );
-            this.isActive = false;
+            this.displayGameEnd();
         } else if (this.engine.isInCheck(this.engine.currentTurn)) {
             this.uiManager.showMessage('⚠️', 2000);
         }
@@ -367,30 +369,8 @@ class OnlineGameController extends GameController {
             this.uiManager.showMessage('⚠️', 2000);
 
         if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else
-                this.uiManager.showMessage(
-                    winner === 'white' ? '⚪🏁' : '⚫🏁',
-                    0
-                );
-            this.isActive = false;
-            if (this.uiManager) this.uiManager.stopClock();
-            if (this.uiManager) {
-                try {
-                    this.uiManager.showEndmatchControls &&
-                        this.uiManager.showEndmatchControls();
-                    this.uiManager.setRerollEnabled &&
-                        this.uiManager.setRerollEnabled(true);
-                    this.uiManager.setResetEnabled &&
-                        this.uiManager.setResetEnabled(true);
-                } catch (e) {
-                    console.warn(
-                        'Ignored error updating endmatch UI (controllers.js)',
-                        e
-                    );
-                }
-            }
+            this.displayGameEnd();
+        }
         }
     }
 
@@ -416,15 +396,7 @@ class OnlineGameController extends GameController {
         if (this.engine.isInCheck(this.engine.currentTurn))
             this.uiManager.showMessage('⚠️', 2000);
         if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else
-                this.uiManager.showMessage(
-                    winner === 'white' ? '⚪🏁' : '⚫🏁',
-                    0
-                );
-            this.isActive = false;
-            if (this.uiManager) this.uiManager.stopClock();
+            this.displayGameEnd();
         }
     }
 }
@@ -524,21 +496,7 @@ class AIGameController extends GameController {
         }
 
         if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') {
-                this.uiManager.showMessage('🤝', 0);
-            } else {
-                this.uiManager.showMessage(
-                    winner === 'white' ? '⚪🏁' : '⚫🏁',
-                    0
-                );
-            }
-            this.isActive = false;
-            if (this.uiManager) this.uiManager.stopClock();
-            // Show end-of-match controls for multiplayer
-            if (this.uiManager && this instanceof MultiplayerGameController) {
-                this.uiManager.showEndmatchControls();
-            }
+            this.displayGameEnd();
             return;
         }
 
@@ -577,16 +535,7 @@ class AIGameController extends GameController {
 
     checkGameState() {
         if (this.engine.isGameOver()) {
-            const winner = this.engine.getWinner();
-            if (winner === 'draw') {
-                this.uiManager.showMessage('🤝', 0);
-            } else {
-                this.uiManager.showMessage(
-                    winner === 'white' ? '⚪🏁' : '⚫🏁',
-                    0
-                );
-            }
-            this.isActive = false;
+            this.displayGameEnd();
         } else if (this.engine.isInCheck(this.engine.currentTurn)) {
             this.uiManager.showMessage('⚠️', 2000);
         }
@@ -651,16 +600,7 @@ class AIGameController extends GameController {
                 }
 
                 if (this.engine.isGameOver()) {
-                    const winner = this.engine.getWinner();
-                    if (winner === 'draw') {
-                        this.uiManager.showMessage('🤝', 0);
-                    } else {
-                        this.uiManager.showMessage(
-                            winner === 'white' ? '⚪🏁' : '⚫🏁',
-                            0
-                        );
-                    }
-                    this.isActive = false;
+                    this.displayGameEnd();
                 }
             }
 

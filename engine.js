@@ -16,6 +16,7 @@ class ChessEngine {
         this.pendingPromotion = null; // {row, col, color, promotionPieces} for choice promotions
         this.seed = seed; // Store seed for move-upgrade generation
         this.lastMove = null; // {fromRow, fromCol, toRow, toCol, piece} for en passant tracking
+        this.resultReason = null; // optional human-readable reason for game end (e.g. 'Insufficient material')
     }
 
     // Create a shallow-cloned Piece instance and optionally apply a king movement
@@ -957,11 +958,50 @@ class ChessEngine {
         // Switch turns
         this.currentTurn = this.currentTurn === 'white' ? 'black' : 'white';
 
+        // If this move captured a piece (normal capture or en-passant),
+        // and there are currently no pawns on the board, run the
+        // aggressive insufficient-material detector. This is intended to
+        // run when the last pawn is captured and on every subsequent
+        // capture thereafter.
+        try {
+            const wasCapture = captured !== null || moveData.type === 'en-passant';
+            if (wasCapture) {
+                if (this._countPawnsOnBoard() === 0) {
+                    if (this._detectInsufficientMaterialAggressive()) {
+                        this.resultReason = 'Insufficient material';
+                        this.gameOver = true;
+                        return true;
+                    }
+                }
+            }
+        } catch (e) {
+            /* ignore detection errors */
+        }
+
         // Check for checkmate or stalemate
         if (this.getAllMoves(this.currentTurn).length === 0) {
             this.gameOver = true;
             // If in check and no moves, it's checkmate
             // If not in check and no moves, it's stalemate (draw)
+        }
+
+        // If this was a capture (en-passant or normal capture) and no pawns
+        // remain on the board, run the aggressive insufficient-material
+        // detector so we can end the game as a draw with a reason.
+        try {
+            const wasCapture = snapshot && snapshot.toCell && snapshot.toCell !== null;
+            // also consider en-passant which is stored in snapshot.enPassantCaptured
+            const epCaptured = snapshot && snapshot.enPassantCaptured;
+            if (wasCapture || epCaptured) {
+                if (this._countPawnsOnBoard() === 0) {
+                    if (this._detectInsufficientMaterialAggressive()) {
+                        this.resultReason = 'Insufficient material';
+                        this.gameOver = true;
+                    }
+                }
+            }
+        } catch (e) {
+            /* ignore detection errors */
         }
 
         return true;
@@ -1218,6 +1258,59 @@ class ChessEngine {
     // Check if game is a stalemate (draw)
     isStalemate() {
         return this.gameOver && !this.isInCheck(this.currentTurn);
+    }
+
+    // Count pawns on the current board. Detect pawns by the presence of
+    // the enPassant special which is assigned to pawns in the generator.
+    _countPawnsOnBoard() {
+        let count = 0;
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const sq = this.board[r][c];
+                if (!sq || !sq.piece) continue;
+                try {
+                    if (
+                        Array.isArray(sq.piece.specials) &&
+                        sq.piece.specials.some((s) => s.type === 'enPassant')
+                    ) {
+                        count++;
+                    }
+                } catch (e) {
+                    // ignore malformed piece
+                }
+            }
+        }
+        return count;
+    }
+
+    // Aggressive insufficient-material detection. Conservative rules for
+    // standard chess would check specific piece combinations; since pieces
+    // here are arbitrary, use an aggressive heuristic: if there are no
+    // pawns and at most one non-royal piece total on the board, declare
+    // insufficient material. This treats K vs K and K vs K+minor as draws.
+    _detectInsufficientMaterialAggressive() {
+        // If any pawns exist, don't consider insufficient material
+        if (this._countPawnsOnBoard() > 0) return false;
+
+        const nonRoyal = [];
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const sq = this.board[r][c];
+                if (!sq || !sq.piece) continue;
+                if (!sq.piece.royal) {
+                    nonRoyal.push({ piece: sq.piece, color: sq.color });
+                }
+            }
+        }
+
+        // No non-royal pieces -> K vs K
+        if (nonRoyal.length === 0) return true;
+
+        // Single minor piece total (either side) -> insufficient
+        if (nonRoyal.length === 1) return true;
+
+        // Otherwise be conservative and assume sufficient material
+        return false;
     }
 
     // Clone the engine state (useful for AI lookahead)
