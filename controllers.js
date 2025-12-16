@@ -371,7 +371,6 @@ class OnlineGameController extends GameController {
         if (this.engine.isGameOver()) {
             this.displayGameEnd();
         }
-        }
     }
 
     applyRemoteMove(move) {
