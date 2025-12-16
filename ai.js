@@ -19,12 +19,17 @@ class ChessAI {
     }
 
     getSearchDepth(difficulty) {
-        switch(difficulty) {
-            case 'easy': return 1;
-            case 'medium': return 2;
-            case 'hard': return 3;
-            case 'expert': return 4;
-            default: return 2;
+        switch (difficulty) {
+            case 'easy':
+                return 1;
+            case 'medium':
+                return 2;
+            case 'hard':
+                return 3;
+            case 'expert':
+                return 4;
+            default:
+                return 2;
         }
     }
 
@@ -34,13 +39,12 @@ class ChessAI {
             easy: 150,
             medium: 500,
             hard: 1200,
-            expert: 3000
+            expert: 3000,
         };
     }
 
     // Main AI move selection - takes a ChessEngine instance
     async getBestMove(engine) {
-
         this.positionEvaluations = 0;
         const startTime = Date.now();
         this.transpositionTable.clear(); // clear cache between top-level searches
@@ -60,7 +64,10 @@ class ChessAI {
                 const sigmoid = 1 / (1 + Math.exp(-x));
                 const maxScale = Math.max(1, this.maxThinkMs / baseTimeLimit);
                 const scale = 1 + sigmoid * (maxScale - 1);
-                timeLimit = Math.min(this.maxThinkMs, Math.round(baseTimeLimit * scale));
+                timeLimit = Math.min(
+                    this.maxThinkMs,
+                    Math.round(baseTimeLimit * scale)
+                );
             }
         } catch (e) {
             // If evaluation fails for any reason, fall back to base timeLimit
@@ -68,7 +75,7 @@ class ChessAI {
         }
 
         const allMoves = engine.getAllMoves(engine.currentTurn);
-        
+
         if (allMoves.length === 0) {
             return null; // No legal moves
         }
@@ -103,8 +110,19 @@ class ChessAI {
                     return bestMove || localBest;
                 }
 
-                const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                const score = -this.minimax(engine, depth - 1, -beta, -alpha, false);
+                const snapshot = engine.makeMoveUnsafe(
+                    move.fromRow,
+                    move.fromCol,
+                    move.toRow,
+                    move.toCol
+                );
+                const score = -this.minimax(
+                    engine,
+                    depth - 1,
+                    -beta,
+                    -alpha,
+                    false
+                );
                 engine.undoMove(snapshot);
 
                 if (score > localBestScore) {
@@ -124,13 +142,13 @@ class ChessAI {
 
         const elapsed = Date.now() - startTime;
         // Development logging removed: keep production quiet
-        
+
         return bestMove;
     }
 
     // Helper to yield control back to browser
     yield() {
-        return new Promise(resolve => setTimeout(resolve, 0));
+        return new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     // Negamax algorithm with alpha-beta pruning (returns score for side to move)
@@ -166,7 +184,12 @@ class ChessAI {
 
         let bestScore = -Infinity;
         for (const move of moves) {
-            const snapshot = engine.makeMoveUnsafe(move.fromRow, move.fromCol, move.toRow, move.toCol);
+            const snapshot = engine.makeMoveUnsafe(
+                move.fromRow,
+                move.fromCol,
+                move.toRow,
+                move.toCol
+            );
             const score = -this.minimax(engine, depth - 1, -beta, -alpha);
             engine.undoMove(snapshot);
 
@@ -186,21 +209,45 @@ class ChessAI {
             let scoreA = 0;
             let scoreB = 0;
 
-            const fromA = engine.board[a.fromRow] && engine.board[a.fromRow][a.fromCol];
-            const fromB = engine.board[b.fromRow] && engine.board[b.fromRow][b.fromCol];
+            const fromA =
+                engine.board[a.fromRow] && engine.board[a.fromRow][a.fromCol];
+            const fromB =
+                engine.board[b.fromRow] && engine.board[b.fromRow][b.fromCol];
 
-            const targetA = engine.board[a.toRow] && engine.board[a.toRow][a.toCol];
-            const targetB = engine.board[b.toRow] && engine.board[b.toRow][b.toCol];
+            const targetA =
+                engine.board[a.toRow] && engine.board[a.toRow][a.toCol];
+            const targetB =
+                engine.board[b.toRow] && engine.board[b.toRow][b.toCol];
 
             // Capture priority using victim value minus attacker value (MVV-LVA)
             if (targetA && fromA) {
-                const victimVal = this.getPieceValue(targetA.piece, a.toRow, a.toCol, targetA.color);
-                const attackerVal = this.getPieceValue(fromA.piece, a.fromRow, a.fromCol, fromA.color);
+                const victimVal = this.getPieceValue(
+                    targetA.piece,
+                    a.toRow,
+                    a.toCol,
+                    targetA.color
+                );
+                const attackerVal = this.getPieceValue(
+                    fromA.piece,
+                    a.fromRow,
+                    a.fromCol,
+                    fromA.color
+                );
                 scoreA += 100 + (victimVal - attackerVal);
             }
             if (targetB && fromB) {
-                const victimVal = this.getPieceValue(targetB.piece, b.toRow, b.toCol, targetB.color);
-                const attackerVal = this.getPieceValue(fromB.piece, b.fromRow, b.fromCol, fromB.color);
+                const victimVal = this.getPieceValue(
+                    targetB.piece,
+                    b.toRow,
+                    b.toCol,
+                    targetB.color
+                );
+                const attackerVal = this.getPieceValue(
+                    fromB.piece,
+                    b.fromRow,
+                    b.fromCol,
+                    fromB.color
+                );
                 scoreB += 100 + (victimVal - attackerVal);
             }
 
@@ -215,8 +262,10 @@ class ChessAI {
             }
 
             // Center control heuristic
-            const centerDistA = Math.abs(3.5 - a.toRow) + Math.abs(3.5 - a.toCol);
-            const centerDistB = Math.abs(3.5 - b.toRow) + Math.abs(3.5 - b.toCol);
+            const centerDistA =
+                Math.abs(3.5 - a.toRow) + Math.abs(3.5 - a.toCol);
+            const centerDistB =
+                Math.abs(3.5 - b.toRow) + Math.abs(3.5 - b.toCol);
             scoreA += (7 - centerDistA) * 0.5;
             scoreB += (7 - centerDistB) * 0.5;
 
@@ -236,7 +285,12 @@ class ChessAI {
             for (let col = 0; col < 8; col++) {
                 const square = engine.board[row][col];
                 if (square) {
-                    const pieceValue = this.getPieceValue(square.piece, row, col, square.color);
+                    const pieceValue = this.getPieceValue(
+                        square.piece,
+                        row,
+                        col,
+                        square.color
+                    );
                     if (square.color === currentPlayer) {
                         score += pieceValue;
                         // Approximate move count instead of calling getAllMoves
@@ -333,12 +387,15 @@ class ChessAI {
                     s += '.';
                 } else {
                     // piece name, color initial and moved flag
-                    s += `|${cell.piece.name}:${cell.color[0]}:${cell.hasMoved ? '1' : '0'}`;
+                    s += `|${cell.piece.name}:${cell.color[0]}:${
+                        cell.hasMoved ? '1' : '0'
+                    }`;
                 }
             }
         }
         // include lastMove to disambiguate en-passant states
-        if (engine.lastMove) s += `:lm:${engine.lastMove.fromRow},${engine.lastMove.fromCol},${engine.lastMove.toRow},${engine.lastMove.toCol}`;
+        if (engine.lastMove)
+            s += `:lm:${engine.lastMove.fromRow},${engine.lastMove.fromCol},${engine.lastMove.toRow},${engine.lastMove.toCol}`;
         return s;
     }
 }
@@ -348,6 +405,8 @@ try {
     if (typeof window !== 'undefined') {
         window.ChessAI = ChessAI;
     }
-} catch (e) { /* ignore in non-browser env */ }
+} catch (e) {
+    /* ignore in non-browser env */
+}
 
 export { ChessAI };

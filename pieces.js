@@ -11,7 +11,14 @@ class Special {
 }
 
 class Move {
-    constructor(step, symmetry, distance, jump, requiresUnmoved, capture = 'allowed') {
+    constructor(
+        step,
+        symmetry,
+        distance,
+        jump,
+        requiresUnmoved,
+        capture = 'allowed'
+    ) {
         this.step = step; // [dx, dy] - movement vector
         this.symmetry = symmetry; // None|Horizontal|Vertical|4way|8way
         this.distance = distance; // max distance, -1 for unlimited
@@ -61,7 +68,16 @@ class Move {
 }
 
 class Piece {
-    constructor(name, moves, royal, specials, promotionPieces, promotionRank, promotionType = null, upgradeMoves = []) {
+    constructor(
+        name,
+        moves,
+        royal,
+        specials,
+        promotionPieces,
+        promotionRank,
+        promotionType = null,
+        upgradeMoves = []
+    ) {
         this.name = name;
         this.moves = moves; // [Move]
         this.royal = royal; // bool
@@ -80,25 +96,27 @@ class Piece {
 class PieceSerializer {
     static serialize(pieces) {
         // Convert pieces to plain objects for JSON
-        return pieces.map(piece => ({
+        return pieces.map((piece) => ({
             name: piece.name,
-            moves: piece.moves.map(move => ({
+            moves: piece.moves.map((move) => ({
                 step: move.step,
                 symmetry: move.symmetry,
                 distance: move.distance,
                 jump: move.jump,
                 requiresUnmoved: move.requiresUnmoved,
-                capture: move.capture
+                capture: move.capture,
             })),
             royal: piece.royal,
-            specials: piece.specials.map(special => ({
+            specials: piece.specials.map((special) => ({
                 type: special.type,
-                data: special.data
+                data: special.data,
             })),
             // Store indices into the top-level pieces array for promotion references
-            promotionPieces: piece.promotionPieces.map(promo => pieces.indexOf(promo)),
+            promotionPieces: piece.promotionPieces.map((promo) =>
+                pieces.indexOf(promo)
+            ),
             promotionRank: piece.promotionRank,
-            promotionType: piece.promotionType
+            promotionType: piece.promotionType,
         }));
     }
 
@@ -107,26 +125,27 @@ class PieceSerializer {
             console.error('piecesData is undefined');
             return null;
         }
-        
+
         // Deserialization in production shouldn't log by default
-        
+
         // First pass: create all pieces without promotion references
-        const pieces = piecesData.map(pieceData => {
-            const moves = pieceData.moves.map(moveData => 
-                new Move(
-                    moveData.step,
-                    moveData.symmetry,
-                    moveData.distance,
-                    moveData.jump,
-                    moveData.requiresUnmoved,
-                    moveData.capture
-                )
+        const pieces = piecesData.map((pieceData) => {
+            const moves = pieceData.moves.map(
+                (moveData) =>
+                    new Move(
+                        moveData.step,
+                        moveData.symmetry,
+                        moveData.distance,
+                        moveData.jump,
+                        moveData.requiresUnmoved,
+                        moveData.capture
+                    )
             );
-            
-            const specials = pieceData.specials.map(specialData =>
-                new Special(specialData.type, specialData.data)
+
+            const specials = pieceData.specials.map(
+                (specialData) => new Special(specialData.type, specialData.data)
             );
-            
+
             return new Piece(
                 pieceData.name,
                 moves,
@@ -137,14 +156,14 @@ class PieceSerializer {
                 pieceData.promotionType
             );
         });
-        
+
         // Second pass: fix promotion piece references (ignore invalid indices)
         piecesData.forEach((pieceData, idx) => {
             pieces[idx].promotionPieces = (pieceData.promotionPieces || [])
-                .map(promoIdx => pieces[promoIdx])
-                .filter(p => !!p);
+                .map((promoIdx) => pieces[promoIdx])
+                .filter((p) => !!p);
         });
-        
+
         return pieces;
     }
 }
@@ -170,7 +189,9 @@ try {
         window.Special = Special;
         window.PieceSerializer = PieceSerializer;
     }
-} catch (e) { /* ignore in non-browser environments */ }
+} catch (e) {
+    /* ignore in non-browser environments */
+}
 
 // ES module exports
 export { Piece, Move, Special, PieceSerializer };

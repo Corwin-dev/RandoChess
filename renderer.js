@@ -2,7 +2,12 @@
 // Pure UI rendering with no game logic
 
 class BoardRenderer {
-    constructor(boardElement, pieceGenerator = (typeof window !== 'undefined' ? window.PieceGenerator : null)) {
+    constructor(
+        boardElement,
+        pieceGenerator = typeof window !== 'undefined'
+            ? window.PieceGenerator
+            : null
+    ) {
         this.boardElement = boardElement;
         this.pieceGenerator = pieceGenerator;
         this.movementOverlay = document.getElementById('movement-overlay');
@@ -19,7 +24,12 @@ class BoardRenderer {
         this.playerColor = color;
     }
 
-    setSelection(square, validMoves = [], theoreticalMoves = new Map(), unrestrictedPattern = new Map()) {
+    setSelection(
+        square,
+        validMoves = [],
+        theoreticalMoves = new Map(),
+        unrestrictedPattern = new Map()
+    ) {
         this.selectedSquare = square;
         this.validMoves = validMoves;
         this.theoreticalMoves = theoreticalMoves;
@@ -38,22 +48,22 @@ class BoardRenderer {
     // Render the extended movement pattern overlay
     renderMovementOverlay() {
         if (!this.movementOverlay) return;
-        
+
         this.movementOverlay.innerHTML = '';
-        
+
         if (!this.selectedSquare || this.unrestrictedPattern.size === 0) {
             this.movementOverlay.style.display = 'none';
             return;
         }
-        
+
         this.movementOverlay.style.display = 'grid';
-        
+
         // Calculate grid bounds based on movement pattern
         let minRow = this.selectedSquare.row;
         let maxRow = this.selectedSquare.row;
         let minCol = this.selectedSquare.col;
         let maxCol = this.selectedSquare.col;
-        
+
         for (const key of this.unrestrictedPattern.keys()) {
             const [row, col] = key.split(',').map(Number);
             minRow = Math.min(minRow, row);
@@ -61,25 +71,25 @@ class BoardRenderer {
             minCol = Math.min(minCol, col);
             maxCol = Math.max(maxCol, col);
         }
-        
+
         // Ensure we show at least some context
         minRow = Math.min(minRow, -2);
         maxRow = Math.max(maxRow, 9);
         minCol = Math.min(minCol, -2);
         maxCol = Math.max(maxCol, 9);
-        
+
         const rows = maxRow - minRow + 1;
         const cols = maxCol - minCol + 1;
-        
+
         // Set up grid with exact square sizes matching the board
         this.movementOverlay.style.gridTemplateColumns = `repeat(${cols}, 75px)`;
         this.movementOverlay.style.gridTemplateRows = `repeat(${rows}, 75px)`;
-        
+
         // Position the overlay so the board squares align perfectly
         // The board always shows row 0 at the top (for white) or row 7 at top (for black)
         // We need to align square [0,0] in both grids
         let offsetRow, offsetCol;
-        
+
         if (this.playerColor === 'black') {
             // Black perspective: row 7 is at top, row 0 at bottom
             offsetRow = maxRow - 7;
@@ -89,13 +99,13 @@ class BoardRenderer {
             offsetRow = 0 - minRow;
             offsetCol = 0 - minCol;
         }
-        
+
         const topOffset = -offsetRow * 75;
         const leftOffset = -offsetCol * 75;
-        
+
         this.movementOverlay.style.top = `${topOffset}px`;
         this.movementOverlay.style.left = `${leftOffset}px`;
-        
+
         // Render grid from player's perspective
         const startRow = this.playerColor === 'black' ? maxRow : minRow;
         const endRow = this.playerColor === 'black' ? minRow - 1 : maxRow + 1;
@@ -103,38 +113,40 @@ class BoardRenderer {
         const startCol = this.playerColor === 'black' ? maxCol : minCol;
         const endCol = this.playerColor === 'black' ? minCol - 1 : maxCol + 1;
         const colStep = this.playerColor === 'black' ? -1 : 1;
-        
+
         for (let row = startRow; row !== endRow; row += rowStep) {
             for (let col = startCol; col !== endCol; col += colStep) {
                 const square = document.createElement('div');
                 square.className = 'overlay-square';
-                
+
                 // Check if this is on the actual board
                 const onBoard = row >= 0 && row <= 7 && col >= 0 && col <= 7;
                 if (onBoard) {
                     square.classList.add('on-board');
                 }
-                
+
                 // Add checkerboard pattern
                 if ((row + col) % 2 === 0) {
                     square.classList.add('light');
                 } else {
                     square.classList.add('dark');
                 }
-                
+
                 // Check if this square is in the unrestricted pattern
                 const key = `${row},${col}`;
                 const move = this.unrestrictedPattern.get(key);
-                
+
                 // Don't show overlay on legal move squares (they're already highlighted green)
-                const isLegalMove = onBoard && this.validMoves.some(m => m.row === row && m.col === col);
-                
+                const isLegalMove =
+                    onBoard &&
+                    this.validMoves.some((m) => m.row === row && m.col === col);
+
                 if (move && !isLegalMove) {
                     const dot = document.createElement('div');
                     dot.className = 'overlay-dot';
                     square.appendChild(dot);
                 }
-                
+
                 this.movementOverlay.appendChild(square);
             }
         }
@@ -157,7 +169,8 @@ class BoardRenderer {
         for (let row = startRow; row !== endRow; row += rowStep) {
             for (let col = startCol; col !== endCol; col += colStep) {
                 const square = document.createElement('div');
-                square.className = 'square ' + ((row + col) % 2 === 0 ? 'light' : 'dark');
+                square.className =
+                    'square ' + ((row + col) % 2 === 0 ? 'light' : 'dark');
                 square.dataset.row = row;
                 square.dataset.col = col;
 
@@ -166,14 +179,33 @@ class BoardRenderer {
                     // Create canvas icon showing movement pattern (use 80 which divides evenly by 8)
                     // Pass player perspective so pieces flip when viewing as black
                     // Determine if this piece is on its promotion square (automatic move-upgrade promotions)
-                    const isPromotionSquare = (cellData.piece.promotionType === 'move-upgrade') &&
-                        ((cellData.color === 'white' && row === 0) || (cellData.color === 'black' && row === 7));
+                    const isPromotionSquare =
+                        cellData.piece.promotionType === 'move-upgrade' &&
+                        ((cellData.color === 'white' && row === 0) ||
+                            (cellData.color === 'black' && row === 7));
 
-                    const defeated = this.defeatedColor && cellData.piece.royal && cellData.color === this.defeatedColor;
-                    const generator = this.pieceGenerator || (typeof window !== 'undefined' ? window.PieceGenerator : null);
-                    const pieceIcon = (generator && typeof generator.createMovementPatternIcon === 'function') ?
-                        generator.createMovementPatternIcon(cellData.piece, 80, cellData.color, this.playerColor, isPromotionSquare, defeated) :
-                        document.createElement('div');
+                    const defeated =
+                        this.defeatedColor &&
+                        cellData.piece.royal &&
+                        cellData.color === this.defeatedColor;
+                    const generator =
+                        this.pieceGenerator ||
+                        (typeof window !== 'undefined'
+                            ? window.PieceGenerator
+                            : null);
+                    const pieceIcon =
+                        generator &&
+                        typeof generator.createMovementPatternIcon ===
+                            'function'
+                            ? generator.createMovementPatternIcon(
+                                  cellData.piece,
+                                  80,
+                                  cellData.color,
+                                  this.playerColor,
+                                  isPromotionSquare,
+                                  defeated
+                              )
+                            : document.createElement('div');
                     pieceIcon.className = `piece ${cellData.color}`;
                     if (cellData.piece.royal) {
                         pieceIcon.classList.add('royal');
@@ -188,16 +220,35 @@ class BoardRenderer {
                         // Use the provided engine if available, otherwise try global app controller
                         square.addEventListener('mouseenter', (e) => {
                             try {
-                                const eng = engine || (window && window.randoChessApp && window.randoChessApp.currentController && window.randoChessApp.currentController.engine) || null;
+                                const eng =
+                                    engine ||
+                                    (window &&
+                                        window.randoChessApp &&
+                                        window.randoChessApp
+                                            .currentController &&
+                                        window.randoChessApp.currentController
+                                            .engine) ||
+                                    null;
                                 if (!eng) return;
                                 // Compute legal moves (takes blocking, captures, and king safety into account)
-                                const moves = typeof eng.getValidMoves === 'function' ? eng.getValidMoves(row, col) : [];
+                                const moves =
+                                    typeof eng.getValidMoves === 'function'
+                                        ? eng.getValidMoves(row, col)
+                                        : [];
                                 const threatened = [];
                                 for (const mv of moves) {
-                                    const r = mv.row, c = mv.col;
-                                    if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
-                                    if (r < 0 || r > 7 || c < 0 || c > 7) continue;
-                                    const sq = this.boardElement.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
+                                    const r = mv.row,
+                                        c = mv.col;
+                                    if (
+                                        !Number.isFinite(r) ||
+                                        !Number.isFinite(c)
+                                    )
+                                        continue;
+                                    if (r < 0 || r > 7 || c < 0 || c > 7)
+                                        continue;
+                                    const sq = this.boardElement.querySelector(
+                                        `.square[data-row="${r}"][data-col="${c}"]`
+                                    );
                                     if (sq) {
                                         sq.classList.add('threat');
                                         threatened.push(sq);
@@ -205,7 +256,9 @@ class BoardRenderer {
                                 }
                                 // Store for cleanup
                                 square._threatenedSquares = threatened;
-                            } catch (e) { /* ignore in test env */ }
+                            } catch (e) {
+                                /* ignore in test env */
+                            }
                         });
 
                         square.addEventListener('mouseleave', (e) => {
@@ -221,20 +274,28 @@ class BoardRenderer {
                 }
 
                 // Highlight selected square
-                if (this.selectedSquare && this.selectedSquare.row === row && this.selectedSquare.col === col) {
+                if (
+                    this.selectedSquare &&
+                    this.selectedSquare.row === row &&
+                    this.selectedSquare.col === col
+                ) {
                     square.classList.add('selected');
                 }
 
                 // Show valid moves
-                const isValidMove = this.validMoves.some(m => m.row === row && m.col === col);
+                const isValidMove = this.validMoves.some(
+                    (m) => m.row === row && m.col === col
+                );
                 if (isValidMove) {
                     square.classList.add('valid-move');
                 }
 
                 // Highlight last move (from/to)
                 if (lastMove) {
-                    const fromMatch = lastMove.fromRow === row && lastMove.fromCol === col;
-                    const toMatch = lastMove.toRow === row && lastMove.toCol === col;
+                    const fromMatch =
+                        lastMove.fromRow === row && lastMove.fromCol === col;
+                    const toMatch =
+                        lastMove.toRow === row && lastMove.toCol === col;
                     if (fromMatch || toMatch) {
                         square.classList.add('last-move');
                         if (fromMatch) square.classList.add('last-move-from');
@@ -250,7 +311,7 @@ class BoardRenderer {
     // Attach click event listener
     attachEventListener(callback) {
         this.onSquareClick = callback;
-        
+
         this.boardElement.addEventListener('click', (e) => {
             const square = e.target.closest('.square');
             if (!square) return;
@@ -308,7 +369,11 @@ class UIManager {
         this.clockInterval = null;
         this.clockOwner = null; // 'player'|'ai'|'opponent'
         this.timeControl = { base: 300, inc: 15 };
-        this.remaining = { player: this.timeControl.base, opponent: this.timeControl.base, ai: this.timeControl.base };
+        this.remaining = {
+            player: this.timeControl.base,
+            opponent: this.timeControl.base,
+            ai: this.timeControl.base,
+        };
 
         // Seed is shown only in the input; no separate HUD/copy button.
         // Allow dismissing the result overlay by clicking outside the box, pressing Escape, or the close button.
@@ -325,11 +390,17 @@ class UIManager {
                 });
             }
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this.resultOverlay && !this.resultOverlay.classList.contains('hidden')) {
+                if (
+                    e.key === 'Escape' &&
+                    this.resultOverlay &&
+                    !this.resultOverlay.classList.contains('hidden')
+                ) {
                     this.hideResult();
                 }
             });
-        } catch (e) { /* ignore in non-browser env */ }
+        } catch (e) {
+            /* ignore in non-browser env */
+        }
     }
 
     // Game status bubble (separate from low-level connection status)
@@ -341,9 +412,10 @@ class UIManager {
             waiting: '⏳',
             'in-game': '♟️',
             idle: '⏹️',
-            finished: '🏁'
+            finished: '🏁',
         };
-        const emoji = token && token.length <= 2 ? token : (map[token] || token || '⏳');
+        const emoji =
+            token && token.length <= 2 ? token : map[token] || token || '⏳';
         if (this.gameIcon) this.gameIcon.textContent = emoji;
         else this.gameBubble.textContent = emoji;
     }
@@ -355,8 +427,16 @@ class UIManager {
             '⚪🏁': { emoji: '⚪', title: 'Checkmate', subtitle: 'White wins' },
             '⚫🏁': { emoji: '⚫', title: 'Checkmate', subtitle: 'Black wins' },
             '🏁': { emoji: '🏁', title: 'Game Over', subtitle: '' },
-            '⚪✋': { emoji: '⚪', title: 'Resignation', subtitle: 'White wins' },
-            '⚫✋': { emoji: '⚫', title: 'Resignation', subtitle: 'Black wins' }
+            '⚪✋': {
+                emoji: '⚪',
+                title: 'Resignation',
+                subtitle: 'White wins',
+            },
+            '⚫✋': {
+                emoji: '⚫',
+                title: 'Resignation',
+                subtitle: 'Black wins',
+            },
         };
         if (duration === 0 && resultMap[msg]) {
             const info = resultMap[msg];
@@ -375,20 +455,32 @@ class UIManager {
                 // Permanent status: store as permanentConnection and show
                 this.permanentStatus = msg;
                 if (this.connectionIcon) this.connectionIcon.textContent = msg;
-                else if (this.connectionBubble) this.connectionBubble.textContent = msg;
+                else if (this.connectionBubble)
+                    this.connectionBubble.textContent = msg;
             } else {
                 // Temporary message: show then restore previous permanent
                 // Keep current shown to restore later
-                const prev = this.connectionIcon ? this.connectionIcon.textContent : (this.connectionBubble ? this.connectionBubble.textContent : '');
+                const prev = this.connectionIcon
+                    ? this.connectionIcon.textContent
+                    : this.connectionBubble
+                    ? this.connectionBubble.textContent
+                    : '';
                 if (this.connectionIcon) this.connectionIcon.textContent = msg;
-                else if (this.connectionBubble) this.connectionBubble.textContent = msg;
+                else if (this.connectionBubble)
+                    this.connectionBubble.textContent = msg;
                 this.messageTimeout = setTimeout(() => {
                     if (this.permanentStatus) {
-                        if (this.connectionIcon) this.connectionIcon.textContent = this.permanentStatus;
-                        else if (this.connectionBubble) this.connectionBubble.textContent = this.permanentStatus;
+                        if (this.connectionIcon)
+                            this.connectionIcon.textContent =
+                                this.permanentStatus;
+                        else if (this.connectionBubble)
+                            this.connectionBubble.textContent =
+                                this.permanentStatus;
                     } else {
-                        if (this.connectionIcon) this.connectionIcon.textContent = prev;
-                        else if (this.connectionBubble) this.connectionBubble.textContent = prev;
+                        if (this.connectionIcon)
+                            this.connectionIcon.textContent = prev;
+                        else if (this.connectionBubble)
+                            this.connectionBubble.textContent = prev;
                     }
                     this.messageTimeout = null;
                 }, duration);
@@ -417,9 +509,14 @@ class UIManager {
 
     restorePermanentStatus() {
         // Restore permanent connection/icon status
-        if ((this.connectionIcon || this.connectionBubble) && this.permanentStatus) {
-            if (this.connectionIcon) this.connectionIcon.textContent = this.permanentStatus;
-            else if (this.connectionBubble) this.connectionBubble.textContent = this.permanentStatus;
+        if (
+            (this.connectionIcon || this.connectionBubble) &&
+            this.permanentStatus
+        ) {
+            if (this.connectionIcon)
+                this.connectionIcon.textContent = this.permanentStatus;
+            else if (this.connectionBubble)
+                this.connectionBubble.textContent = this.permanentStatus;
             return;
         }
 
@@ -444,7 +541,8 @@ class UIManager {
 
     updateTurn(color) {
         if (this.turnElement) {
-            const emoji = color === 'white' ? '⚪' : (color === 'black' ? '⚫' : '🤝');
+            const emoji =
+                color === 'white' ? '⚪' : color === 'black' ? '⚫' : '🤝';
             this.turnElement.textContent = emoji;
         }
         // Toggle body classes so CSS can change visuals for each turn
@@ -479,7 +577,8 @@ class UIManager {
             this.searchButton.classList.add('search');
             this.searchButton.title = 'Start search';
             // Ensure the active click handler matches the search handler if present
-            if (this._searchHandler) this.searchButton.onclick = this._searchHandler;
+            if (this._searchHandler)
+                this.searchButton.onclick = this._searchHandler;
         }
     }
 
@@ -493,7 +592,8 @@ class UIManager {
             this.searchButton.classList.add('cancel');
             this.searchButton.title = 'Cancel search';
             // Attach cancel handler if present
-            if (this._cancelHandler) this.searchButton.onclick = this._cancelHandler;
+            if (this._cancelHandler)
+                this.searchButton.onclick = this._cancelHandler;
         }
     }
 
@@ -524,9 +624,10 @@ class UIManager {
             searching: '🔍',
             connected: '✅',
             disconnected: '❌',
-            idle: '⏹️'
+            idle: '⏹️',
         };
-        const emoji = token && token.length <= 2 ? token : (map[token] || token || '⚡');
+        const emoji =
+            token && token.length <= 2 ? token : map[token] || token || '⚡';
         // update icon node if present, otherwise set bubble text
         if (this.connectionIcon) this.connectionIcon.textContent = emoji;
         else this.connectionBubble.textContent = emoji;
@@ -538,16 +639,17 @@ class UIManager {
         const map = {
             ready: '🧠',
             thinking: '💭',
-            idle: '—'
+            idle: '—',
         };
-        const emoji = token && token.length <= 2 ? token : (map[token] || token || '');
+        const emoji =
+            token && token.length <= 2 ? token : map[token] || token || '';
         this.thinkingBubble.textContent = emoji;
     }
 
     // Set both clocks manually (keeps alingual format). If passed a numeric string like '00:00', applies to both.
     setClock(text) {
         const hasDigits = /\d/.test(text || '');
-        const content = hasDigits ? `⏱️ ${text}` : (text || '⏱️ 00:00');
+        const content = hasDigits ? `⏱️ ${text}` : text || '⏱️ 00:00';
         if (this.clockPlayer) this.clockPlayer.textContent = content;
         if (this.clockOpponent) this.clockOpponent.textContent = content;
     }
@@ -574,8 +676,14 @@ class UIManager {
 
     // Render both clock displays from remaining times
     renderClocks() {
-        if (this.clockPlayer) this.clockPlayer.textContent = `⏱️ ${this.formatTime(this.remaining.player)}`;
-        if (this.clockOpponent) this.clockOpponent.textContent = `⏱️ ${this.formatTime(this.remaining.opponent)}`;
+        if (this.clockPlayer)
+            this.clockPlayer.textContent = `⏱️ ${this.formatTime(
+                this.remaining.player
+            )}`;
+        if (this.clockOpponent)
+            this.clockOpponent.textContent = `⏱️ ${this.formatTime(
+                this.remaining.opponent
+            )}`;
     }
 
     // Start decrementing the clock for the given owner (player/opponent/ai)
@@ -588,7 +696,8 @@ class UIManager {
         }
         this.clockOwner = owner;
         // Ensure remaining time exists
-        if (typeof this.remaining[owner] === 'undefined') this.remaining[owner] = this.timeControl.base;
+        if (typeof this.remaining[owner] === 'undefined')
+            this.remaining[owner] = this.timeControl.base;
         // Show thinking icon if AI
         if (owner === 'ai') this.setThinking('thinking');
         else this.setThinking('');
@@ -617,7 +726,9 @@ class UIManager {
     }
 
     formatTime(seconds) {
-        const mm = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const mm = Math.floor(seconds / 60)
+            .toString()
+            .padStart(2, '0');
         const ss = (seconds % 60).toString().padStart(2, '0');
         return `${mm}:${ss}`;
     }
@@ -650,22 +761,29 @@ class UIManager {
             this.endmatchControls.classList.add('hidden');
         }
         // clear any rematch highlights
-        if (this.rematchRollBtn) this.rematchRollBtn.classList.remove('selected');
-        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.remove('selected');
-        if (this.rematchRollBtn) this.rematchRollBtn.classList.remove('opponent-selected');
-        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.remove('opponent-selected');
+        if (this.rematchRollBtn)
+            this.rematchRollBtn.classList.remove('selected');
+        if (this.rematchKeepBtn)
+            this.rematchKeepBtn.classList.remove('selected');
+        if (this.rematchRollBtn)
+            this.rematchRollBtn.classList.remove('opponent-selected');
+        if (this.rematchKeepBtn)
+            this.rematchKeepBtn.classList.remove('opponent-selected');
     }
 
     onRematchRollClick(callback) {
-        if (this.rematchRollBtn) this.rematchRollBtn.addEventListener('click', callback);
+        if (this.rematchRollBtn)
+            this.rematchRollBtn.addEventListener('click', callback);
     }
 
     onRematchKeepClick(callback) {
-        if (this.rematchKeepBtn) this.rematchKeepBtn.addEventListener('click', callback);
+        if (this.rematchKeepBtn)
+            this.rematchKeepBtn.addEventListener('click', callback);
     }
 
     onModePlayAIClick(callback) {
-        if (this.modePlayAIButton) this.modePlayAIButton.addEventListener('click', callback);
+        if (this.modePlayAIButton)
+            this.modePlayAIButton.addEventListener('click', callback);
     }
 
     onRerollClick(callback) {
@@ -681,7 +799,8 @@ class UIManager {
     }
 
     onForfeitClick(callback) {
-        if (this.forfeitBtn) this.forfeitBtn.addEventListener('click', callback);
+        if (this.forfeitBtn)
+            this.forfeitBtn.addEventListener('click', callback);
     }
 
     setRerollEnabled(enabled) {
@@ -697,7 +816,8 @@ class UIManager {
     }
 
     onModeOTBClick(callback) {
-        if (this.modeOTBButton) this.modeOTBButton.addEventListener('click', callback);
+        if (this.modeOTBButton)
+            this.modeOTBButton.addEventListener('click', callback);
     }
 
     setDrawEnabled(enabled) {
@@ -713,11 +833,13 @@ class UIManager {
     }
 
     onModeOnlineClick(callback) {
-        if (this.modeOnlineButton) this.modeOnlineButton.addEventListener('click', callback);
+        if (this.modeOnlineButton)
+            this.modeOnlineButton.addEventListener('click', callback);
     }
 
     onTakebackClick(callback) {
-        if (this.takebackBtn) this.takebackBtn.addEventListener('click', callback);
+        if (this.takebackBtn)
+            this.takebackBtn.addEventListener('click', callback);
     }
 
     setTakebackEnabled(enabled) {
@@ -733,9 +855,13 @@ class UIManager {
     setTakebackRequested(myRequested, opponentRequested) {
         if (!this.takebackBtn) return;
         this.takebackBtn.classList.toggle('takeback-requested', !!myRequested);
-        this.takebackBtn.classList.toggle('takeback-opponent-requested', !!opponentRequested);
+        this.takebackBtn.classList.toggle(
+            'takeback-opponent-requested',
+            !!opponentRequested
+        );
         // slightly emphasize when opponent requested
-        if (opponentRequested) this.takebackBtn.style.boxShadow = '0 0 8px rgba(0,128,255,0.6)';
+        if (opponentRequested)
+            this.takebackBtn.style.boxShadow = '0 0 8px rgba(0,128,255,0.6)';
         else this.takebackBtn.style.boxShadow = '';
     }
 
@@ -743,27 +869,49 @@ class UIManager {
     setDrawRequested(myRequested, opponentRequested) {
         if (!this.drawBtn) return;
         this.drawBtn.classList.toggle('draw-requested', !!myRequested);
-        this.drawBtn.classList.toggle('draw-opponent-requested', !!opponentRequested);
-        if (opponentRequested) this.drawBtn.style.boxShadow = '0 0 8px rgba(0,200,0,0.6)';
+        this.drawBtn.classList.toggle(
+            'draw-opponent-requested',
+            !!opponentRequested
+        );
+        if (opponentRequested)
+            this.drawBtn.style.boxShadow = '0 0 8px rgba(0,200,0,0.6)';
         else this.drawBtn.style.boxShadow = '';
     }
 
     onNewOpponentClick(callback) {
-        if (this.newOpponentBtn) this.newOpponentBtn.addEventListener('click', callback);
+        if (this.newOpponentBtn)
+            this.newOpponentBtn.addEventListener('click', callback);
     }
 
     onAIMatchClick(callback) {
-        if (this.aiMatchBtn) this.aiMatchBtn.addEventListener('click', callback);
+        if (this.aiMatchBtn)
+            this.aiMatchBtn.addEventListener('click', callback);
     }
 
     // Visualize rematch selection state. mySelection: 'roll'|'keep'|null, opponentSelection: same
     setRematchSelections(mySelection, opponentSelection) {
-        if (this.rematchRollBtn) this.rematchRollBtn.classList.toggle('selected', mySelection === 'roll');
-        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.toggle('selected', mySelection === 'keep');
+        if (this.rematchRollBtn)
+            this.rematchRollBtn.classList.toggle(
+                'selected',
+                mySelection === 'roll'
+            );
+        if (this.rematchKeepBtn)
+            this.rematchKeepBtn.classList.toggle(
+                'selected',
+                mySelection === 'keep'
+            );
 
         // Indicate opponent selection by adding a faint highlight
-        if (this.rematchRollBtn) this.rematchRollBtn.classList.toggle('opponent-selected', opponentSelection === 'roll');
-        if (this.rematchKeepBtn) this.rematchKeepBtn.classList.toggle('opponent-selected', opponentSelection === 'keep');
+        if (this.rematchRollBtn)
+            this.rematchRollBtn.classList.toggle(
+                'opponent-selected',
+                opponentSelection === 'roll'
+            );
+        if (this.rematchKeepBtn)
+            this.rematchKeepBtn.classList.toggle(
+                'opponent-selected',
+                opponentSelection === 'keep'
+            );
     }
 
     showPromotionDialog(pieces, color, onChoose) {
@@ -775,11 +923,13 @@ class UIManager {
         // Build list of visible choices (preserve original indices) and exclude royals
         const choices = pieces
             .map((piece, idx) => ({ piece, idx }))
-            .filter(item => !item.piece.royal);
+            .filter((item) => !item.piece.royal);
 
         if (choices.length === 0) {
             // Nothing to choose (shouldn't normally happen) - fallback to first piece
-            console.warn('No promotion choices available (all pieces royal?). Defaulting to first.');
+            console.warn(
+                'No promotion choices available (all pieces royal?). Defaulting to first.'
+            );
             this.hidePromotionDialog();
             onChoose(0);
             return;
@@ -801,10 +951,24 @@ class UIManager {
             choice.style.padding = '6px';
 
             // Try to generate and add the movement pattern icon
-                try {
-                const generator = this.pieceGenerator || (typeof window !== 'undefined' ? window.PieceGenerator : null);
-                if (generator && typeof generator.createMovementPatternIcon === 'function') {
-                    const icon = generator.createMovementPatternIcon(piece, 80, 'white', 'white', false, false);
+            try {
+                const generator =
+                    this.pieceGenerator ||
+                    (typeof window !== 'undefined'
+                        ? window.PieceGenerator
+                        : null);
+                if (
+                    generator &&
+                    typeof generator.createMovementPatternIcon === 'function'
+                ) {
+                    const icon = generator.createMovementPatternIcon(
+                        piece,
+                        80,
+                        'white',
+                        'white',
+                        false,
+                        false
+                    );
                     icon.style.display = 'block';
                     icon.style.width = '80px';
                     icon.style.height = '80px';
@@ -818,7 +982,10 @@ class UIManager {
                     choice.appendChild(fallback);
                 }
             } catch (error) {
-                console.error('Error creating icon for promotion choice:', error);
+                console.error(
+                    'Error creating icon for promotion choice:',
+                    error
+                );
                 const fallback = document.createElement('div');
                 fallback.textContent = '❓';
                 fallback.style.color = '#fff';
@@ -852,39 +1019,67 @@ class UIManager {
         // Determine defeated color from subtitle when possible (e.g. 'White wins')
         let defeated = null;
         if (subtitle && typeof subtitle === 'string') {
-            if (subtitle.toLowerCase().includes('white wins')) defeated = 'black';
-            else if (subtitle.toLowerCase().includes('black wins')) defeated = 'white';
+            if (subtitle.toLowerCase().includes('white wins'))
+                defeated = 'black';
+            else if (subtitle.toLowerCase().includes('black wins'))
+                defeated = 'white';
         }
         this.defeatedColor = defeated;
 
         // Determine current player's color (if available) to show personalized outcome
         let ourColor = null;
-        try { if (window && window.randoChessApp && window.randoChessApp.currentController && window.randoChessApp.currentController.playerColor) ourColor = window.randoChessApp.currentController.playerColor; } catch (e) {}
+        try {
+            if (
+                window &&
+                window.randoChessApp &&
+                window.randoChessApp.currentController &&
+                window.randoChessApp.currentController.playerColor
+            )
+                ourColor = window.randoChessApp.currentController.playerColor;
+        } catch (e) { console.warn('Ignored error reading randoChessApp state (renderer.js)', e); }
 
         let outcomeText = 'Draw';
         if (defeated) {
-            if (ourColor) outcomeText = (ourColor === defeated) ? 'You Lost' : 'You Won';
-            else outcomeText = (defeated === 'white') ? 'Black Wins' : 'White Wins';
+            if (ourColor)
+                outcomeText = ourColor === defeated ? 'You Lost' : 'You Won';
+            else
+                outcomeText =
+                    defeated === 'white' ? 'Black Wins' : 'White Wins';
         }
 
         if (this.resultTitle) this.resultTitle.textContent = outcomeText;
         // Reason should use the provided title (e.g. 'Checkmate', 'Resignation', 'Agreement')
         const reason = title || (subtitle ? subtitle : 'Game Over');
-        if (this.resultSubtitle) this.resultSubtitle.textContent = `Reason: ${reason}`;
+        if (this.resultSubtitle)
+            this.resultSubtitle.textContent = `Reason: ${reason}`;
         this.resultOverlay.classList.remove('hidden');
         // Make overlay catch pointer events while visible
         this.resultOverlay.style.pointerEvents = 'auto';
         // Also set the global renderer's defeatedColor (if available) so board icons update
         try {
-            if (window && window.randoChessApp && window.randoChessApp.renderer) {
+            if (
+                window &&
+                window.randoChessApp &&
+                window.randoChessApp.renderer
+            ) {
                 window.randoChessApp.renderer.defeatedColor = defeated;
                 // Re-render the current board to show the defeated styling immediately
                 const app = window.randoChessApp;
-                if (app.currentController && app.currentController.engine && app.renderer) {
-                    app.renderer.render(app.currentController.engine.board, app.currentController.engine.lastMove, app.currentController.engine);
+                if (
+                    app.currentController &&
+                    app.currentController.engine &&
+                    app.renderer
+                ) {
+                    app.renderer.render(
+                        app.currentController.engine.board,
+                        app.currentController.engine.lastMove,
+                        app.currentController.engine
+                    );
                 }
             }
-        } catch (e) { /* ignore in non-browser/test env */ }
+        } catch (e) {
+            /* ignore in non-browser/test env */
+        }
     }
 
     hideResult() {
@@ -900,6 +1095,8 @@ try {
         window.BoardRenderer = BoardRenderer;
         window.UIManager = UIManager;
     }
-} catch (e) { /* ignore if not in browser env */ }
+} catch (e) {
+    /* ignore if not in browser env */
+}
 
 export { BoardRenderer, UIManager };

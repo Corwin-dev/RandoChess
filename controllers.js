@@ -1,4 +1,5 @@
 // ===== Game Mode Controllers =====
+/* global ChessEngine, ChessAI, MultiplayerGameController */
 // Manage different game modes (AI vs Multiplayer)
 
 // Base controller for game logic coordination
@@ -19,10 +20,15 @@ class GameController {
             // Keep a shallow cap to avoid unbounded memory
             this._history.push(this.engine.clone());
             if (this._history.length > 256) this._history.shift();
-            if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') {
+            if (
+                this.uiManager &&
+                typeof this.uiManager.setTakebackEnabled === 'function'
+            ) {
                 this.uiManager.setTakebackEnabled(true);
             }
-        } catch (e) { console.warn('recordState failed', e); }
+        } catch (e) {
+            console.warn('recordState failed', e);
+        }
     }
 
     // Return whether a takeback is available
@@ -40,12 +46,26 @@ class GameController {
             this.engine = prev;
             // Update UI/renderer
             if (this.renderer) {
-                try { this.renderer.clearSelection(); } catch (e) {}
-                this.renderer.render(this.engine.board, this.engine.lastMove, this.engine);
+                try {
+                    this.renderer.clearSelection();
+                } catch (e) { console.warn('Ignored error clearing selection (controllers.js)', e); }
+                this.renderer.render(
+                    this.engine.board,
+                    this.engine.lastMove,
+                    this.engine
+                );
             }
             this.selectedSquare = null;
-            if (this.uiManager && typeof this.uiManager.updateTurn === 'function') this.uiManager.updateTurn(this.engine.currentTurn);
-            if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(this.canTakeback());
+            if (
+                this.uiManager &&
+                typeof this.uiManager.updateTurn === 'function'
+            )
+                this.uiManager.updateTurn(this.engine.currentTurn);
+            if (
+                this.uiManager &&
+                typeof this.uiManager.setTakebackEnabled === 'function'
+            )
+                this.uiManager.setTakebackEnabled(this.canTakeback());
             return true;
         } catch (e) {
             console.warn('takeback failed', e);
@@ -58,10 +78,18 @@ class GameController {
         this.isActive = true;
         // Reset takeback history when starting a fresh game
         this._history = [];
-        if (this.uiManager && typeof this.uiManager.setTakebackEnabled === 'function') this.uiManager.setTakebackEnabled(false);
+        if (
+            this.uiManager &&
+            typeof this.uiManager.setTakebackEnabled === 'function'
+        )
+            this.uiManager.setTakebackEnabled(false);
         // Hide any previous match result overlay when starting
         if (this.uiManager && this.uiManager.hideResult) {
-            try { this.uiManager.hideResult(); } catch (e) { console.warn('uiManager.hideResult failed', e); }
+            try {
+                this.uiManager.hideResult();
+            } catch (e) {
+                console.warn('uiManager.hideResult failed', e);
+            }
         }
         this.render();
         this.uiManager.updateTurn(this.engine.currentTurn);
@@ -72,7 +100,11 @@ class GameController {
     }
 
     render() {
-        this.renderer.render(this.engine.board, this.engine.lastMove, this.engine);
+        this.renderer.render(
+            this.engine.board,
+            this.engine.lastMove,
+            this.engine
+        );
     }
 
     handleSquareClick(row, col) {
@@ -80,13 +112,23 @@ class GameController {
 
         // Check if clicking a valid move
         const cellData = this.engine.board[row][col];
-        
+
         if (this.selectedSquare) {
-            const validMoves = this.engine.getValidMoves(this.selectedSquare.row, this.selectedSquare.col);
-            const isValidMove = validMoves.some(m => m.row === row && m.col === col);
-            
+            const validMoves = this.engine.getValidMoves(
+                this.selectedSquare.row,
+                this.selectedSquare.col
+            );
+            const isValidMove = validMoves.some(
+                (m) => m.row === row && m.col === col
+            );
+
             if (isValidMove) {
-                this.makeMove(this.selectedSquare.row, this.selectedSquare.col, row, col);
+                this.makeMove(
+                    this.selectedSquare.row,
+                    this.selectedSquare.col,
+                    row,
+                    col
+                );
                 return;
             }
         }
@@ -103,8 +145,16 @@ class GameController {
         this.selectedSquare = { row, col };
         const validMoves = this.engine.getValidMoves(row, col);
         const theoreticalMoves = this.engine.getTheoreticalMoves(row, col);
-        const unrestrictedPattern = this.engine.getUnrestrictedPattern(row, col);
-        this.renderer.setSelection(this.selectedSquare, validMoves, theoreticalMoves, unrestrictedPattern);
+        const unrestrictedPattern = this.engine.getUnrestrictedPattern(
+            row,
+            col
+        );
+        this.renderer.setSelection(
+            this.selectedSquare,
+            validMoves,
+            theoreticalMoves,
+            unrestrictedPattern
+        );
         this.render();
     }
 
@@ -125,7 +175,9 @@ try {
         window.GameController = GameController;
         window.AIGameController = AIGameController;
     }
-} catch (e) { /* ignore in non-browser env */ }
+} catch (e) {
+    /* ignore in non-browser env */
+}
 export { GameController, AIGameController };
 
 // Hotseat controller: human plays both sides locally (no AI, no networking)
@@ -138,7 +190,9 @@ class HotseatController extends GameController {
         // Ensure engine initialized and front-end ready
         super.start(placement);
         // Set initial turn
-        try { this.engine.currentTurn = startingColor; } catch (e) {}
+        try {
+            this.engine.currentTurn = startingColor;
+        } catch (e) { console.warn('Ignored error setting starting color (controllers.js)', e); }
         if (this.uiManager) {
             this.uiManager.updateTurn(this.engine.currentTurn);
             this.uiManager.setOpponentStatus('👥');
@@ -162,12 +216,16 @@ class HotseatController extends GameController {
         // Handle promotion choices
         if (this.engine.pendingPromotion) {
             const { color, promotionPieces } = this.engine.pendingPromotion;
-            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
-                this.engine.completePromotion(pieceIndex);
-                this.render();
-                this.uiManager.updateTurn(this.engine.currentTurn);
-                this.checkGameState();
-            });
+            this.uiManager.showPromotionDialog(
+                promotionPieces,
+                color,
+                (pieceIndex) => {
+                    this.engine.completePromotion(pieceIndex);
+                    this.render();
+                    this.uiManager.updateTurn(this.engine.currentTurn);
+                    this.checkGameState();
+                }
+            );
             this.render();
             return;
         }
@@ -181,16 +239,25 @@ class HotseatController extends GameController {
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            else
+                this.uiManager.showMessage(
+                    winner === 'white' ? '⚪🏁' : '⚫🏁',
+                    0
+                );
             this.isActive = false;
             if (this.uiManager) this.uiManager.stopClock();
             // Show end-of-match rematch controls for online matches
             if (this.uiManager) {
                 try {
-                    this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
-                    this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
-                    this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
-                } catch (e) { console.warn('render failed', e); }
+                    this.uiManager.showEndmatchControls &&
+                        this.uiManager.showEndmatchControls();
+                    this.uiManager.setRerollEnabled &&
+                        this.uiManager.setRerollEnabled(true);
+                    this.uiManager.setResetEnabled &&
+                        this.uiManager.setResetEnabled(true);
+                } catch (e) {
+                    console.warn('render failed', e);
+                }
             }
         }
     }
@@ -199,7 +266,11 @@ class HotseatController extends GameController {
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            else
+                this.uiManager.showMessage(
+                    winner === 'white' ? '⚪🏁' : '⚫🏁',
+                    0
+                );
             this.isActive = false;
         } else if (this.engine.isInCheck(this.engine.currentTurn)) {
             this.uiManager.showMessage('⚠️', 2000);
@@ -207,7 +278,10 @@ class HotseatController extends GameController {
     }
 }
 
-try { if (typeof window !== 'undefined') window.HotseatController = HotseatController; } catch (e) {}
+try {
+    if (typeof window !== 'undefined')
+        window.HotseatController = HotseatController;
+} catch (e) { console.warn('Failed to attach HotseatController to window (controllers.js)', e); }
 export { HotseatController };
 
 // Lightweight online controller: talks to server via WebSocket
@@ -223,7 +297,10 @@ class OnlineGameController extends GameController {
         this.renderer.setPlayerColor(this.playerColor);
         super.start(placement);
         if (this.uiManager) {
-            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
+            const owner =
+                this.engine.currentTurn === this.playerColor
+                    ? 'player'
+                    : 'opponent';
             this.uiManager.startClock(owner);
             if (owner !== 'player') this.uiManager.setThinking('');
         }
@@ -243,65 +320,119 @@ class OnlineGameController extends GameController {
 
         if (this.engine.pendingPromotion) {
             const { color, promotionPieces } = this.engine.pendingPromotion;
-            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
-                this.engine.completePromotion(pieceIndex);
-                this.render();
-                this.uiManager.updateTurn(this.engine.currentTurn);
-                // send promotion move
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    this.ws.send(JSON.stringify({ type: 'MOVE', move: { fromRow, fromCol, toRow, toCol, promotion: pieceIndex }, gameOver: this.engine.isGameOver(), winner: this.engine.getWinner() }));
+            this.uiManager.showPromotionDialog(
+                promotionPieces,
+                color,
+                (pieceIndex) => {
+                    this.engine.completePromotion(pieceIndex);
+                    this.render();
+                    this.uiManager.updateTurn(this.engine.currentTurn);
+                    // send promotion move
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(
+                            JSON.stringify({
+                                type: 'MOVE',
+                                move: {
+                                    fromRow,
+                                    fromCol,
+                                    toRow,
+                                    toCol,
+                                    promotion: pieceIndex,
+                                },
+                                gameOver: this.engine.isGameOver(),
+                                winner: this.engine.getWinner(),
+                            })
+                        );
+                    }
+                    this.checkGameState();
                 }
-                this.checkGameState();
-            });
+            );
             this.render();
             return;
         }
 
         this.uiManager.updateTurn(this.engine.currentTurn);
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type: 'MOVE', move: { fromRow, fromCol, toRow, toCol }, gameOver: this.engine.isGameOver(), winner: this.engine.getWinner() }));
+            this.ws.send(
+                JSON.stringify({
+                    type: 'MOVE',
+                    move: { fromRow, fromCol, toRow, toCol },
+                    gameOver: this.engine.isGameOver(),
+                    winner: this.engine.getWinner(),
+                })
+            );
         }
 
-        if (this.engine.isInCheck(this.engine.currentTurn)) this.uiManager.showMessage('⚠️', 2000);
+        if (this.engine.isInCheck(this.engine.currentTurn))
+            this.uiManager.showMessage('⚠️', 2000);
 
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            else
+                this.uiManager.showMessage(
+                    winner === 'white' ? '⚪🏁' : '⚫🏁',
+                    0
+                );
             this.isActive = false;
             if (this.uiManager) this.uiManager.stopClock();
             if (this.uiManager) {
                 try {
-                    this.uiManager.showEndmatchControls && this.uiManager.showEndmatchControls();
-                    this.uiManager.setRerollEnabled && this.uiManager.setRerollEnabled(true);
-                    this.uiManager.setResetEnabled && this.uiManager.setResetEnabled(true);
-                } catch (e) { console.warn('Ignored error updating endmatch UI (controllers.js)', e); }
+                    this.uiManager.showEndmatchControls &&
+                        this.uiManager.showEndmatchControls();
+                    this.uiManager.setRerollEnabled &&
+                        this.uiManager.setRerollEnabled(true);
+                    this.uiManager.setResetEnabled &&
+                        this.uiManager.setResetEnabled(true);
+                } catch (e) {
+                    console.warn(
+                        'Ignored error updating endmatch UI (controllers.js)',
+                        e
+                    );
+                }
             }
         }
     }
 
     applyRemoteMove(move) {
-        this.engine.makeMove(move.fromRow, move.fromCol, move.toRow, move.toCol);
-        if (this.engine.pendingPromotion && move.promotion !== undefined) this.engine.completePromotion(move.promotion);
+        this.engine.makeMove(
+            move.fromRow,
+            move.fromCol,
+            move.toRow,
+            move.toCol
+        );
+        if (this.engine.pendingPromotion && move.promotion !== undefined)
+            this.engine.completePromotion(move.promotion);
         this.render();
         this.uiManager.updateTurn(this.engine.currentTurn);
         if (this.uiManager) {
-            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'opponent';
+            const owner =
+                this.engine.currentTurn === this.playerColor
+                    ? 'player'
+                    : 'opponent';
             this.uiManager.startClock(owner);
             this.uiManager.setThinking('');
         }
-        if (this.engine.isInCheck(this.engine.currentTurn)) this.uiManager.showMessage('⚠️', 2000);
+        if (this.engine.isInCheck(this.engine.currentTurn))
+            this.uiManager.showMessage('⚠️', 2000);
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') this.uiManager.showMessage('🤝', 0);
-            else this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+            else
+                this.uiManager.showMessage(
+                    winner === 'white' ? '⚪🏁' : '⚫🏁',
+                    0
+                );
             this.isActive = false;
             if (this.uiManager) this.uiManager.stopClock();
         }
     }
 }
 
-try { if (typeof window !== 'undefined') window.OnlineGameController = OnlineGameController; } catch (e) {}
+try {
+    if (typeof window !== 'undefined')
+        window.OnlineGameController = OnlineGameController;
+} catch (e) { console.warn('Failed to attach OnlineGameController to window (controllers.js)', e); }
 export { OnlineGameController };
 
 // AI Game Mode Controller
@@ -316,21 +447,23 @@ class AIGameController extends GameController {
 
     start(placement = null, playerColor = null) {
         // Randomly assign player color if not specified
-        this.playerColor = playerColor || (Math.random() < 0.5 ? 'white' : 'black');
+        this.playerColor =
+            playerColor || (Math.random() < 0.5 ? 'white' : 'black');
         this.aiColor = this.playerColor === 'white' ? 'black' : 'white';
-        
+
         this.renderer.setPlayerColor(this.playerColor);
-        
+
         super.start(placement);
         // Start the clock for whoever's turn it is initially
         if (this.uiManager) {
-            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
+            const owner =
+                this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
             this.uiManager.startClock(owner);
             if (owner === 'ai') this.uiManager.setThinking('thinking');
         }
-        
+
         // Don't clear the message - preserve multiplayer search status
-        
+
         // If AI plays first, make AI move
         if (this.engine.currentTurn === this.aiColor) {
             this.makeAIMove();
@@ -340,7 +473,7 @@ class AIGameController extends GameController {
     handleSquareClick(row, col) {
         // Only allow clicks when it's player's turn
         if (this.engine.currentTurn !== this.playerColor) return;
-        
+
         super.handleSquareClick(row, col);
     }
 
@@ -350,47 +483,55 @@ class AIGameController extends GameController {
         const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
 
         if (!success) return;
-        
+
         this.clearSelection();
-        
+
         // Check for pending promotion (player's choice)
         if (this.engine.pendingPromotion) {
             const { color, promotionPieces } = this.engine.pendingPromotion;
-            this.uiManager.showPromotionDialog(promotionPieces, color, (pieceIndex) => {
-                this.engine.completePromotion(pieceIndex);
-                this.render();
-                this.uiManager.updateTurn(this.engine.currentTurn);
-                this.checkGameState();
-                
-                // Make AI move if it's AI's turn after promotion
-                if (this.engine.currentTurn === this.aiColor) {
-                    this.makeAIMove();
+            this.uiManager.showPromotionDialog(
+                promotionPieces,
+                color,
+                (pieceIndex) => {
+                    this.engine.completePromotion(pieceIndex);
+                    this.render();
+                    this.uiManager.updateTurn(this.engine.currentTurn);
+                    this.checkGameState();
+
+                    // Make AI move if it's AI's turn after promotion
+                    if (this.engine.currentTurn === this.aiColor) {
+                        this.makeAIMove();
+                    }
                 }
-            });
+            );
             this.render();
             return;
         }
-        
+
         this.uiManager.updateTurn(this.engine.currentTurn);
         // Update clock for the next player
         if (this.uiManager) {
-            const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
+            const owner =
+                this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
             this.uiManager.startClock(owner);
             if (owner === 'ai') this.uiManager.setThinking('thinking');
             else this.uiManager.setThinking('');
         }
-        
+
         // Show check status
-            if (this.engine.isInCheck(this.engine.currentTurn)) {
-                this.uiManager.showMessage('⚠️', 2000);
-            }
-        
+        if (this.engine.isInCheck(this.engine.currentTurn)) {
+            this.uiManager.showMessage('⚠️', 2000);
+        }
+
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') {
                 this.uiManager.showMessage('🤝', 0);
             } else {
-                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+                this.uiManager.showMessage(
+                    winner === 'white' ? '⚪🏁' : '⚫🏁',
+                    0
+                );
             }
             this.isActive = false;
             if (this.uiManager) this.uiManager.stopClock();
@@ -400,7 +541,7 @@ class AIGameController extends GameController {
             }
             return;
         }
-        
+
         // Make AI move if it's AI's turn
         if (this.engine.currentTurn === this.aiColor) {
             this.makeAIMove();
@@ -429,16 +570,21 @@ class AIGameController extends GameController {
                 this.uiManager.updateTurn(this.engine.currentTurn);
             }
             return true;
-        } catch (e) { return false; }
+        } catch (e) {
+            return false;
+        }
     }
-    
+
     checkGameState() {
         if (this.engine.isGameOver()) {
             const winner = this.engine.getWinner();
             if (winner === 'draw') {
                 this.uiManager.showMessage('🤝', 0);
             } else {
-                this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+                this.uiManager.showMessage(
+                    winner === 'white' ? '⚪🏁' : '⚫🏁',
+                    0
+                );
             }
             this.isActive = false;
         } else if (this.engine.isInCheck(this.engine.currentTurn)) {
@@ -473,7 +619,12 @@ class AIGameController extends GameController {
             if (bestMove) {
                 // Record current state so AI moves can be undone as well
                 this.recordState();
-                this.engine.makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol);
+                this.engine.makeMove(
+                    bestMove.fromRow,
+                    bestMove.fromCol,
+                    bestMove.toRow,
+                    bestMove.toCol
+                );
 
                 // Handle AI promotion - always choose first piece (strongest)
                 if (this.engine.pendingPromotion) {
@@ -481,10 +632,14 @@ class AIGameController extends GameController {
                 }
 
                 this.render();
-                if (this.uiManager) this.uiManager.updateTurn(this.engine.currentTurn);
+                if (this.uiManager)
+                    this.uiManager.updateTurn(this.engine.currentTurn);
                 // After AI move, start the player's clock
                 if (this.uiManager) {
-                    const owner = this.engine.currentTurn === this.playerColor ? 'player' : 'ai';
+                    const owner =
+                        this.engine.currentTurn === this.playerColor
+                            ? 'player'
+                            : 'ai';
                     this.uiManager.startClock(owner);
                     if (owner === 'ai') this.uiManager.setThinking('thinking');
                     else this.uiManager.setThinking('');
@@ -500,7 +655,10 @@ class AIGameController extends GameController {
                     if (winner === 'draw') {
                         this.uiManager.showMessage('🤝', 0);
                     } else {
-                        this.uiManager.showMessage(winner === 'white' ? '⚪🏁' : '⚫🏁', 0);
+                        this.uiManager.showMessage(
+                            winner === 'white' ? '⚪🏁' : '⚫🏁',
+                            0
+                        );
                     }
                     this.isActive = false;
                 }
@@ -518,7 +676,9 @@ class AIGameController extends GameController {
         super.stop();
         if (this.uiManager) {
             this.uiManager.setThinking('');
-            try { this.uiManager.stopClock(); } catch (e) {}
+                try {
+                this.uiManager.stopClock();
+            } catch (e) { console.warn('Ignored error stopping clock (controllers.js)', e); }
         }
     }
 }

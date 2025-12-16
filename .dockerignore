@@ -4,3 +4,8 @@
 .env
 Dockerfile
 fly.toml
+*.log
+.vscode
+v2/dist
+dist
+coverage

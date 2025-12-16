@@ -4,15 +4,30 @@
 // This stub keeps imports safe while clearly signaling the feature is disabled.
 class MultiplayerClient {
     constructor() {
-        console.warn('MultiplayerClient is disabled in this build. Use the standalone server for matchmaking.');
+        console.warn(
+            'MultiplayerClient is disabled in this build. Use the standalone server for matchmaking.'
+        );
     }
-    connect() { /* no-op */ }
-    disconnect() { /* no-op */ }
-    sendMove() { /* no-op */ }
-    sendRematchRequest() { /* no-op */ }
-    leaveAndQueue() { /* no-op */ }
+    connect() {
+        /* no-op */
+    }
+    disconnect() {
+        /* no-op */
+    }
+    sendMove() {
+        /* no-op */
+    }
+    sendRematchRequest() {
+        /* no-op */
+    }
+    leaveAndQueue() {
+        /* no-op */
+    }
 }
 
-try { if (typeof window !== 'undefined') window.MultiplayerClient = null; } catch (e) { console.warn('No window to attach MultiplayerClient'); }
+try {
+    if (typeof window !== 'undefined') window.MultiplayerClient = null;
+} catch (e) {
+    console.warn('No window to attach MultiplayerClient');
+}
 export { MultiplayerClient };
-

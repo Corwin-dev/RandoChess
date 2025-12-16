@@ -1,87 +1,154 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" id="theme-color" content="#667eea">
-    <meta name="google-adsense-account" content="ca-pub-1152509147742120">
-    <title></title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="shortcut icon" href="favicon.svg">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1152509147742120" crossorigin="anonymous"></script>
-</head>
-<body>
-    <div class="container">
-        <div id="opponent-status" class="opponent-status">
-            <span id="opponent-icon" class="opponent-icon">🤖</span>
-        </div>
-        <div id="mode-controls" class="mode-controls">
-            <button id="btn-play-ai" class="mode-btn" aria-label="Play Against AI">🤖</button>
-            <button id="btn-play-otb" class="mode-btn" aria-label="Play Over The Board">👥</button>
-            <button id="btn-play-online" class="mode-btn" aria-label="Play Online">🌐</button>
-            <button id="takeback-btn" class="mode-btn" aria-label="Take back last move">↩️</button>
-            <div class="seed-controls">
-                <button id="reroll-btn" class="mode-btn" aria-label="Reroll setup">🎲</button>
-                <button id="reset-btn" class="mode-btn" aria-label="Reset setup">🔁</button>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" id="theme-color" content="#667eea" />
+        <meta name="google-adsense-account" content="ca-pub-1152509147742120" />
+        <title></title>
+        <link rel="stylesheet" href="style.css" />
+        <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+        <link rel="shortcut icon" href="favicon.svg" />
+        <script
+            async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1152509147742120"
+            crossorigin="anonymous"
+        ></script>
+    </head>
+    <body>
+        <div class="container">
+            <div id="opponent-status" class="opponent-status">
+                <span id="opponent-icon" class="opponent-icon">🤖</span>
             </div>
-            <button id="draw-btn" class="mode-btn" aria-label="Offer Draw">🤝</button>
-            <button id="forfeit-btn" class="mode-btn" aria-label="Forfeit Game">🏳️</button>
-        </div>
-        <div id="board-container">
-            <div id="board"></div>
-            <div id="promotion-dialog" class="promotion-dialog hidden">
-                <div class="promotion-content">
-                    <div id="promotion-choices"></div>
+            <div id="mode-controls" class="mode-controls">
+                <button
+                    id="btn-play-ai"
+                    class="mode-btn"
+                    aria-label="Play Against AI"
+                >
+                    🤖
+                </button>
+                <button
+                    id="btn-play-otb"
+                    class="mode-btn"
+                    aria-label="Play Over The Board"
+                >
+                    👥
+                </button>
+                <button
+                    id="btn-play-online"
+                    class="mode-btn"
+                    aria-label="Play Online"
+                >
+                    🌐
+                </button>
+                <button
+                    id="takeback-btn"
+                    class="mode-btn"
+                    aria-label="Take back last move"
+                >
+                    ↩️
+                </button>
+                <div class="seed-controls">
+                    <button
+                        id="reroll-btn"
+                        class="mode-btn"
+                        aria-label="Reroll setup"
+                    >
+                        🎲
+                    </button>
+                    <button
+                        id="reset-btn"
+                        class="mode-btn"
+                        aria-label="Reset setup"
+                    >
+                        🔁
+                    </button>
+                </div>
+                <button id="draw-btn" class="mode-btn" aria-label="Offer Draw">
+                    🤝
+                </button>
+                <button
+                    id="forfeit-btn"
+                    class="mode-btn"
+                    aria-label="Forfeit Game"
+                >
+                    🏳️
+                </button>
+            </div>
+            <div id="board-container">
+                <div id="board"></div>
+                <div id="promotion-dialog" class="promotion-dialog hidden">
+                    <div class="promotion-content">
+                        <div id="promotion-choices"></div>
+                    </div>
                 </div>
             </div>
         </div>
-        
-    </div>
-    <!-- Status HUD moved into #opponent-status above the board -->
-    <!-- End-of-match controls (hidden until game over) -->
-    <div class="endmatch-row hidden" id="endmatch-controls">
-        <button id="rematch-roll-btn" class="endmatch-btn">🎲</button>
-        <button id="rematch-keep-btn" class="endmatch-btn">🔁</button>
-        <button id="new-opponent-btn" class="endmatch-btn">🔍</button>
-        <button id="ai-match-btn" class="endmatch-btn">🤖</button>
-    </div>
-    <!-- Prominent result overlay (hidden until game over) -->
-    <div id="result-overlay" class="result-overlay hidden" role="status" aria-live="polite">
-        <div class="result-box">
-            <button id="result-close" class="result-close" aria-label="Dismiss result">✖</button>
-            <div id="result-emoji" class="result-emoji">🏁</div>
-            <div id="result-title" class="result-title">Game Over</div>
-            <div id="result-subtitle" class="result-subtitle">Stalemate / Checkmate</div>
+        <!-- Status HUD moved into #opponent-status above the board -->
+        <!-- End-of-match controls (hidden until game over) -->
+        <div class="endmatch-row hidden" id="endmatch-controls">
+            <button id="rematch-roll-btn" class="endmatch-btn">🎲</button>
+            <button id="rematch-keep-btn" class="endmatch-btn">🔁</button>
+            <button id="new-opponent-btn" class="endmatch-btn">🔍</button>
+            <button id="ai-match-btn" class="endmatch-btn">🤖</button>
         </div>
-    </div>
-    <footer>
-        <p><a href="mailto:corwin.pearson@gmail.com">✉️</a></p>
-    </footer>
-    
-    <!-- Load modules in dependency order -->
-    <script type="module" src="pieces.js?v=24"></script>
-    <script type="module" src="engine.js?v=24"></script>
-    <script type="module" src="renderer.js?v=24"></script>
-    <script type="module" src="ai.js?v=24"></script>
-    <script type="module" src="controllers.js?v=24"></script>
-    <script type="module" src="multiplayer.js?v=24"></script>
-    <script type="module" src="game.js?v=24"></script>
-    <script>
-        (function(){
-            function updateThemeColor(){
-                try{
-                    var meta = document.querySelector('meta[name="theme-color"]');
-                    var color = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary') || '#667eea';
-                    if(meta) meta.setAttribute('content', color.trim());
-                }catch(e){ /* ignore */ }
-            }
-            updateThemeColor();
-            var mq = window.matchMedia('(prefers-color-scheme: dark)');
-            if(mq.addEventListener) mq.addEventListener('change', updateThemeColor);
-            else if(mq.addListener) mq.addListener(updateThemeColor);
-        })();
-    </script>
-</body>
+        <!-- Prominent result overlay (hidden until game over) -->
+        <div
+            id="result-overlay"
+            class="result-overlay hidden"
+            role="status"
+            aria-live="polite"
+        >
+            <div class="result-box">
+                <button
+                    id="result-close"
+                    class="result-close"
+                    aria-label="Dismiss result"
+                >
+                    ✖
+                </button>
+                <div id="result-emoji" class="result-emoji">🏁</div>
+                <div id="result-title" class="result-title">Game Over</div>
+                <div id="result-subtitle" class="result-subtitle">
+                    Stalemate / Checkmate
+                </div>
+            </div>
+        </div>
+        <footer>
+            <p><a href="mailto:corwin.pearson@gmail.com">✉️</a></p>
+        </footer>
 
+        <!-- Load modules in dependency order -->
+        <script type="module" src="pieces.js?v=24"></script>
+        <script type="module" src="engine.js?v=24"></script>
+        <script type="module" src="renderer.js?v=24"></script>
+        <script type="module" src="ai.js?v=24"></script>
+        <script type="module" src="controllers.js?v=24"></script>
+        <script type="module" src="multiplayer.js?v=24"></script>
+        <script type="module" src="game.js?v=24"></script>
+        <script>
+            (function () {
+                function updateThemeColor() {
+                    try {
+                        var meta = document.querySelector(
+                            'meta[name="theme-color"]'
+                        );
+                        var color =
+                            getComputedStyle(
+                                document.documentElement
+                            ).getPropertyValue('--bg-primary') || '#667eea';
+                        if (meta) meta.setAttribute('content', color.trim());
+                    } catch (e) {
+                        /* ignore */
+                    }
+                }
+                updateThemeColor();
+                var mq = window.matchMedia('(prefers-color-scheme: dark)');
+                if (mq.addEventListener)
+                    mq.addEventListener('change', updateThemeColor);
+                else if (mq.addListener) mq.addListener(updateThemeColor);
+            })();
+        </script>
+    </body>
 </html>

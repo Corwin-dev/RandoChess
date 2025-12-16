@@ -1,39 +1,28 @@
 # syntax = docker/dockerfile:1
 
-# Adjust NODE_VERSION as desired
-ARG NODE_VERSION=20.18.0
-FROM node:${NODE_VERSION}-slim AS base
+# Use a lightweight Node image and multi-stage build to keep image small.
+ARG NODE_VERSION=20
+FROM node:${NODE_VERSION}-alpine AS build
 
-LABEL fly_launch_runtime="Node.js"
-
-# Node.js app lives here
 WORKDIR /app
+ENV NODE_ENV=production
 
-# Set production environment
-ENV NODE_ENV="production"
+# Install production dependencies only (no dev deps)
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
-
-# Throw-away build stage to reduce size of final image
-FROM base AS build
-
-# Install packages needed to build node modules
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
-
-# Install node modules
-COPY package-lock.json package.json ./
-RUN npm ci
-
-# Copy application code
+# Copy app sources
 COPY . .
 
+# Final runtime image
+FROM node:${NODE_VERSION}-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
 
-# Final stage for app image
-FROM base
-
-# Copy built application
+# Copy app and node_modules from build stage
 COPY --from=build /app /app
 
-# Start the server by default, this can be overwritten at runtime
+# Fly.io sets $PORT; server.js respects process.env.PORT
 EXPOSE 3000
-CMD [ "npm", "run", "start" ]
+
+CMD ["node", "server.js"]
