@@ -21,7 +21,7 @@ class BoardRenderer {
     }
 
     setPlayerColor(color) {
-        this.playerColor = color;
+        this.playerColor = color;        
     }
 
     setSelection(
